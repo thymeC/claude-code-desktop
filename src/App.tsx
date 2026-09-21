@@ -1,13 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ccd } from './lib/ipc'
 import type { AttachmentRef, AuthStatus, ChatEvent, CliStatus, SessionSummary } from './lib/types'
 import { Onboarding } from './components/Onboarding'
 import { ApiKeyPrompt } from './components/ApiKeyPrompt'
-import { ChatTranscript, type TranscriptItem } from './components/ChatTranscript'
+import { ChatTranscript, type ActivityStep, type TranscriptItem } from './components/ChatTranscript'
 import { Composer } from './components/Composer'
 import { LeftNav } from './components/LeftNav'
 import { RightPanel } from './components/RightPanel'
 import { PermissionModal } from './components/PermissionModal'
+import { SettingsPanel } from './components/SettingsPanel'
+
+const DEFAULT_FONT_SIZE = 14
+
+interface SessionUiState {
+  items: TranscriptItem[]
+  streaming: string
+  busy: boolean
+  activity: ActivityStep[]
+  toolCount: number
+  title: string
+  error: string | null
+}
 
 export function App() {
   const [cli, setCli] = useState<CliStatus | null>(null)
@@ -24,8 +37,66 @@ export function App() {
   const [permission, setPermission] = useState<ChatEvent | null>(null)
   const [rightOpen, setRightOpen] = useState(true)
   const [toolCount, setToolCount] = useState(0)
+  const [activity, setActivity] = useState<ActivityStep[]>([])
   const [title, setTitle] = useState('New chat')
   const [copyToast, setCopyToast] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
+  const [projects, setProjects] = useState<string[]>([])
+
+  const uiCacheRef = useRef(new Map<string, SessionUiState>())
+  const viewedSessionRef = useRef<string | null>(null)
+  const snapshotRef = useRef<SessionUiState>({
+    items: [],
+    streaming: '',
+    busy: false,
+    activity: [],
+    toolCount: 0,
+    title: 'New chat',
+    error: null,
+  })
+
+  // Keep a live snapshot for caching without stale closures
+  useEffect(() => {
+    snapshotRef.current = {
+      items,
+      streaming,
+      busy,
+      activity,
+      toolCount,
+      title,
+      error,
+    }
+    viewedSessionRef.current = activeSessionId
+  }, [items, streaming, busy, activity, toolCount, title, error, activeSessionId])
+
+  function cacheCurrentUi(sessionId: string | null) {
+    if (!sessionId) return
+    uiCacheRef.current.set(sessionId, { ...snapshotRef.current })
+  }
+
+  function applyUi(state: SessionUiState) {
+    setItems(state.items)
+    setStreaming(state.streaming)
+    setBusy(state.busy)
+    setActivity(state.activity)
+    setToolCount(state.toolCount)
+    setTitle(state.title)
+    setError(state.error)
+  }
+
+  function patchCachedSession(sessionId: string, patch: (prev: SessionUiState) => SessionUiState) {
+    const prev = uiCacheRef.current.get(sessionId) ?? {
+      items: [],
+      streaming: '',
+      busy: false,
+      activity: [],
+      toolCount: 0,
+      title: 'Chat',
+      error: null,
+    }
+    uiCacheRef.current.set(sessionId, patch(prev))
+  }
 
   async function refreshCli() {
     const status = await ccd().cliCheck()
@@ -42,50 +113,261 @@ export function App() {
   const refreshSessions = useCallback(async (path: string) => {
     const list = await ccd().sessionList(path)
     setSessions(list)
+    return list
   }, [])
+
+  const refreshProjects = useCallback(async () => {
+    const list = await ccd().projectList()
+    setProjects(list)
+    return list
+  }, [])
+
+  const openExistingChat = useCallback(
+    async (path: string, sessionId: string, sessionList?: SessionSummary[]) => {
+      const list = sessionList ?? (await ccd().sessionList(path))
+      const live = await ccd().sessionLive()
+      const cached = uiCacheRef.current.get(sessionId)
+      const preview = list.find((s) => s.id === sessionId)?.preview?.slice(0, 40) || 'Chat'
+
+      // Same chat already in view — refresh from cache (keeps Working…) and ensure ready
+      if (sessionId === viewedSessionRef.current) {
+        cacheCurrentUi(sessionId)
+        setSessions(list)
+        setActiveSessionId(sessionId)
+        if (cached) applyUi(uiCacheRef.current.get(sessionId) ?? cached)
+        if (live.sessionId === sessionId && live.running) {
+          setSessionReady(true)
+          if (live.pending) setBusy(true)
+        }
+        return
+      }
+
+      cacheCurrentUi(viewedSessionRef.current)
+
+      setSessions(list)
+      setActiveSessionId(sessionId)
+      setPermission(null)
+
+      // Backend still on this session — keep it alive and restore Working… UI
+      if (live.sessionId === sessionId && live.running) {
+        await ccd().sessionResume(path, sessionId)
+        setSessionReady(true)
+        if (cached) {
+          applyUi(cached)
+        } else {
+          const transcript = await ccd().sessionTranscript(path, sessionId)
+          applyUi({
+            items: transcript.map((m) => ({ id: m.id, role: m.role, text: m.text })),
+            streaming: '',
+            busy: live.pending,
+            activity: live.pending
+              ? [
+                  {
+                    id: crypto.randomUUID(),
+                    kind: 'thinking',
+                    label: 'Working',
+                    detail: 'Still running…',
+                    status: 'running',
+                  },
+                ]
+              : [],
+            toolCount: 0,
+            title: preview,
+            error: null,
+          })
+        }
+        return
+      }
+
+      // Viewing another chat while one may still be running in the background —
+      // do NOT stop/resume (that wiped Working… status on switch-back).
+      const transcript = await ccd().sessionTranscript(path, sessionId)
+      if (cached) {
+        applyUi({
+          ...cached,
+          items:
+            transcript.length > cached.items.length
+              ? transcript.map((m) => ({ id: m.id, role: m.role, text: m.text }))
+              : cached.items,
+          title: cached.title || preview,
+        })
+      } else {
+        applyUi({
+          items: transcript.map((m) => ({ id: m.id, role: m.role, text: m.text })),
+          streaming: '',
+          busy: false,
+          activity: [],
+          toolCount: 0,
+          title: preview,
+          error: null,
+        })
+      }
+      setSessionReady(false)
+
+      // Soft-bind backend only when nothing is in-flight on another session
+      if (!live.pending) {
+        try {
+          await ccd().chatStop()
+        } catch {
+          // ignore
+        }
+        await ccd().sessionResume(path, sessionId)
+        setSessionReady(true)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-font-size', `${fontSize}px`)
+    document.documentElement.style.setProperty(
+      '--assistant-font-size',
+      `${Math.max(fontSize + 1, Math.round(fontSize * 1.1))}px`,
+    )
+  }, [fontSize])
 
   useEffect(() => {
     void (async () => {
       const status = await refreshCli()
       const authStatus = await refreshAuth()
-      if (status.found && authStatus.authenticated) {
-        const path = await ccd().projectGet()
+      const settings = await ccd().settingsGet()
+      if (typeof settings.fontSize === 'number') {
+        setFontSize(Math.min(18, Math.max(12, settings.fontSize)))
+      }
+      const canUseApp =
+        authStatus.authenticated && (authStatus.provider === 'openai' || status.found)
+      if (canUseApp) {
+        const list = await refreshProjects()
+        const path = (await ccd().projectGet()) ?? list[0] ?? null
         setProjectPath(path)
-        if (path) await refreshSessions(path)
+        if (path) {
+          const sessionsList = await refreshSessions(path)
+          const settingsLast = settings.lastSessionId
+          const preferred =
+            (settingsLast && sessionsList.find((s) => s.id === settingsLast)?.id) ||
+            sessionsList[0]?.id
+          if (preferred) await openExistingChat(path, preferred, sessionsList)
+        }
       }
     })()
 
     return ccd().onChatEvent((event: ChatEvent) => {
+      const eventSession = event.sessionId ?? null
+      const viewing = viewedSessionRef.current
+      const forView = !eventSession || !viewing || eventSession === viewing
+
+      const applyToCache = (sessionId: string, mutate: (s: SessionUiState) => SessionUiState) => {
+        patchCachedSession(sessionId, mutate)
+      }
+
       if (event.type === 'partial' && event.text) {
-        setStreaming((prev) => prev + event.text)
-        setBusy(true)
+        if (forView) {
+          setStreaming((prev) => prev + event.text!)
+          setBusy(true)
+          setActivity((prev) =>
+            prev.map((s) => (s.status === 'running' ? { ...s, status: 'done' as const } : s)),
+          )
+        }
+        if (eventSession) {
+          applyToCache(eventSession, (s) => ({
+            ...s,
+            streaming: s.streaming + event.text!,
+            busy: true,
+            activity: s.activity.map((a) =>
+              a.status === 'running' ? { ...a, status: 'done' as const } : a,
+            ),
+          }))
+        }
       } else if (event.type === 'message' && event.text) {
-        setStreaming('')
-        setItems((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: event.role ?? 'assistant', text: event.text! },
-        ])
-        setBusy(false)
+        const msg = {
+          id: crypto.randomUUID(),
+          role: (event.role ?? 'assistant') as TranscriptItem['role'],
+          text: event.text!,
+        }
+        if (forView) {
+          setStreaming('')
+          setItems((prev) => [...prev, msg])
+          setBusy(false)
+          setActivity([])
+        }
+        if (eventSession) {
+          applyToCache(eventSession, (s) => ({
+            ...s,
+            streaming: '',
+            items: [...s.items, msg],
+            busy: false,
+            activity: [],
+          }))
+        }
       } else if (event.type === 'tool') {
-        setToolCount((n) => n + 1)
+        const { label, detail } = formatToolStep(event.toolName, event.toolInput)
+        const step: ActivityStep = {
+          id: crypto.randomUUID(),
+          kind: 'tool',
+          label,
+          detail,
+          status: 'running',
+        }
+        if (forView) {
+          setBusy(true)
+          setToolCount((n) => n + 1)
+          setActivity((prev) => [
+            ...prev.map((s) => (s.status === 'running' ? { ...s, status: 'done' as const } : s)),
+            step,
+          ])
+        }
+        if (eventSession) {
+          applyToCache(eventSession, (s) => ({
+            ...s,
+            busy: true,
+            toolCount: s.toolCount + 1,
+            activity: [
+              ...s.activity.map((a) =>
+                a.status === 'running' ? { ...a, status: 'done' as const } : a,
+              ),
+              step,
+            ],
+          }))
+        }
       } else if (event.type === 'permission_request') {
-        setPermission(event)
+        if (forView) setPermission(event)
       } else if (event.type === 'error' && event.error) {
-        setError(event.error)
-        setBusy(false)
+        if (forView) {
+          setError(event.error)
+          setBusy(false)
+          setActivity((prev) => prev.map((s) => ({ ...s, status: 'done' as const })))
+        }
+        if (eventSession) {
+          applyToCache(eventSession, (s) => ({
+            ...s,
+            error: event.error!,
+            busy: false,
+            activity: s.activity.map((a) => ({ ...a, status: 'done' as const })),
+          }))
+        }
       } else if (event.type === 'done') {
-        setBusy(false)
-        setStreaming((prev) => {
-          if (prev) {
-            setItems((curr) => [
-              ...curr,
-              { id: crypto.randomUUID(), role: 'assistant', text: prev },
-            ])
-          }
-          return ''
-        })
+        if (forView) {
+          setBusy(false)
+          setActivity([])
+          setStreaming((prev) => {
+            if (prev) {
+              setItems((curr) => [
+                ...curr,
+                { id: crypto.randomUUID(), role: 'assistant', text: prev },
+              ])
+            }
+            return ''
+          })
+        }
+        if (eventSession) {
+          applyToCache(eventSession, (s) => {
+            const items = s.streaming
+              ? [...s.items, { id: crypto.randomUUID(), role: 'assistant' as const, text: s.streaming }]
+              : s.items
+            return { ...s, busy: false, activity: [], streaming: '', items }
+          })
+        }
         if (event.sessionId) {
-          setActiveSessionId(event.sessionId)
           void (async () => {
             const path = await ccd().projectGet()
             if (path) await refreshSessions(path)
@@ -93,13 +375,19 @@ export function App() {
         }
       }
     })
-  }, [refreshSessions])
+  }, [refreshSessions, refreshProjects, openExistingChat])
+
+  async function changeFontSize(size: number) {
+    setFontSize(size)
+    await ccd().settingsSet({ fontSize: size })
+  }
 
   async function startNewChat(path = projectPath) {
     if (!path) {
-      setError('Open a project first (Projects).')
+      setError('Add or select a repo first.')
       return
     }
+    cacheCurrentUi(viewedSessionRef.current)
     setError(null)
     setBusy(false)
     setStreaming('')
@@ -107,13 +395,16 @@ export function App() {
     setAttachments([])
     setPermission(null)
     setToolCount(0)
+    setActivity([])
     setTitle('New chat')
     setActiveSessionId(null)
     try {
       await ccd().chatStop()
-      await ccd().sessionNew(path)
+      const created = await ccd().sessionNew(path)
       setSessionReady(true)
+      if (created.sessionId) setActiveSessionId(created.sessionId)
       await refreshSessions(path)
+      await refreshProjects()
     } catch (e) {
       setSessionReady(false)
       setError(e instanceof Error ? e.message : String(e))
@@ -124,24 +415,117 @@ export function App() {
     const path = await ccd().projectOpen()
     if (!path) return
     setProjectPath(path)
-    await startNewChat(path)
+    await refreshProjects()
+    setSessionReady(false)
+    setActiveSessionId(null)
+    setItems([])
+    setStreaming('')
+    const list = await refreshSessions(path)
+    if (list[0]) await openExistingChat(path, list[0].id, list)
+    else setTitle('New chat')
+  }
+
+  async function selectProject(path: string) {
+    if (path === projectPath) return
+    try {
+      await ccd().chatStop()
+    } catch {
+      // ignore
+    }
+    await ccd().projectSelect(path)
+    setProjectPath(path)
+    setSessionReady(false)
+    setActiveSessionId(null)
+    setItems([])
+    setStreaming('')
+    setAttachments([])
+    setPermission(null)
+    setError(null)
+    setTitle(basename(path))
+    const list = await refreshSessions(path)
+    if (list[0]) await openExistingChat(path, list[0].id, list)
+  }
+
+  async function reorderProjects(ordered: string[]) {
+    setProjects(ordered)
+    const saved = await ccd().projectReorder(ordered)
+    setProjects(saved)
+  }
+
+  async function removeProject(path: string) {
+    const list = await ccd().projectRemove(path)
+    setProjects(list)
+    if (projectPath === path) {
+      const next = list[0] ?? null
+      setProjectPath(next)
+      setSessions([])
+      setSessionReady(false)
+      setActiveSessionId(null)
+      setItems([])
+      if (next) {
+        await ccd().projectSelect(next)
+        const sessionsList = await refreshSessions(next)
+        if (sessionsList[0]) await openExistingChat(next, sessionsList[0].id, sessionsList)
+      }
+    }
+  }
+
+  function basename(p: string) {
+    const parts = p.split(/[/\\]/)
+    return parts[parts.length - 1] || p
   }
 
   async function send(text: string) {
     if (!projectPath) return
-    if (!sessionReady) await startNewChat(projectPath)
+    if (!sessionReady || !activeSessionId) {
+      if (activeSessionId) {
+        // Bind backend to the chat we're viewing (may stop a background run)
+        try {
+          await ccd().chatStop()
+        } catch {
+          // ignore
+        }
+        await ccd().sessionResume(projectPath, activeSessionId)
+        setSessionReady(true)
+      } else if (sessions[0]) {
+        await openExistingChat(projectPath, sessions[0].id, sessions)
+      } else {
+        await startNewChat(projectPath)
+      }
+    } else {
+      // Ensure backend matches viewed session before send
+      const live = await ccd().sessionLive()
+      if (live.sessionId && activeSessionId && live.sessionId !== activeSessionId) {
+        try {
+          await ccd().chatStop()
+        } catch {
+          // ignore
+        }
+        await ccd().sessionResume(projectPath, activeSessionId)
+      }
+    }
     if (text.trim()) {
       setItems((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', text }])
-      if (title === 'New chat') setTitle(text.slice(0, 40))
+      if (title === 'New chat' || title === 'Chat') setTitle(text.slice(0, 40))
     }
     setBusy(true)
     setError(null)
+    setActivity([
+      {
+        id: crypto.randomUUID(),
+        kind: 'thinking',
+        label: 'Thinking',
+        detail: 'Reading your request…',
+        status: 'running',
+      },
+    ])
     try {
       await ccd().chatSend(text, attachments)
       setAttachments([])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setBusy(false)
+      setActivity([])
     }
   }
 
@@ -173,15 +557,10 @@ export function App() {
 
   async function resume(sessionId: string) {
     if (!projectPath) return
+    // Allow re-entry when switching back so cached Working… state is restored
+    if (sessionId === activeSessionId && sessionReady && busy) return
     try {
-      await ccd().chatStop()
-      await ccd().sessionResume(projectPath, sessionId)
-      setActiveSessionId(sessionId)
-      setSessionReady(true)
-      setTitle(sessions.find((s) => s.id === sessionId)?.preview?.slice(0, 40) || 'Resumed chat')
-      setItems([])
-      setStreaming('')
-      setError(null)
+      await openExistingChat(projectPath, sessionId)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -197,7 +576,7 @@ export function App() {
     return <main className="app-shell">Loading…</main>
   }
 
-  if (!cli.found) {
+  if (auth.provider !== 'openai' && !cli.found) {
     return (
       <main className="app-shell">
         <Onboarding
@@ -215,11 +594,16 @@ export function App() {
         <ApiKeyPrompt
           hasStoredKey={auth.hasStoredKey}
           source={auth.source}
-          onSave={async (apiKey) => {
+          initialProvider={auth.provider}
+          onSaveClaude={async (apiKey) => {
             const next = await ccd().authSetApiKey(apiKey)
             setAuth(next)
           }}
-          onClear={async () => {
+          onSaveOpenAi={async (payload) => {
+            const next = await ccd().authSetOpenAi(payload)
+            setAuth(next)
+          }}
+          onClearClaude={async () => {
             const next = await ccd().authClearApiKey()
             setAuth(next)
           }}
@@ -228,17 +612,29 @@ export function App() {
     )
   }
 
-  const modelLabel = cli.version.includes('Claude') ? 'Claude Code' : cli.version
+  const modelLabel =
+    auth.provider === 'openai'
+      ? auth.openaiModel ?? 'OpenAI'
+      : cli.found && cli.version.includes('Claude')
+        ? 'Claude Code'
+        : cli.found
+          ? cli.version
+          : 'Claude Code'
 
   return (
     <div className={`desktop-shell${rightOpen ? ' with-right' : ''}`}>
       <LeftNav
         projectPath={projectPath}
+        projects={projects}
         sessions={sessions}
         activeId={activeSessionId}
         onNew={() => void startNewChat()}
         onOpenProject={() => void openProject()}
-        onSelect={(id) => void resume(id)}
+        onSelectProject={(p) => void selectProject(p)}
+        onRemoveProject={(p) => void removeProject(p)}
+        onReorderProjects={(ordered) => void reorderProjects(ordered)}
+        onSelectSession={(id) => void resume(id)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <div
@@ -265,16 +661,22 @@ export function App() {
 
         {!projectPath ? (
           <div className="empty">
-            <p>Choose a project to start coding with Claude.</p>
+            <p>Add a repo folder to start coding with Claude.</p>
             <button type="button" className="primary-btn" onClick={() => void openProject()}>
-              Open project
+              Add repo
             </button>
           </div>
         ) : (
           <>
             {error ? <div className="error-banner">{error}</div> : null}
             {copyToast ? <div className="toast">Copied</div> : null}
-            <ChatTranscript items={items} streaming={streaming} onCopy={(t) => void copyText(t)} />
+            <ChatTranscript
+              items={items}
+              streaming={streaming}
+              busy={busy}
+              activity={activity}
+              onCopy={(t) => void copyText(t)}
+            />
             <div className="composer-wrap">
               <Composer
                 disabled={!!permission}
@@ -321,6 +723,84 @@ export function App() {
           }}
         />
       ) : null}
+
+      {settingsOpen ? (
+        <SettingsPanel
+          fontSize={fontSize}
+          onFontSizeChange={(size) => void changeFontSize(size)}
+          auth={auth}
+          onSaveClaudeKey={async (apiKey) => {
+            const next = await ccd().authSetApiKey(apiKey)
+            setAuth(next)
+          }}
+          onSaveOpenAi={async (payload) => {
+            const next = await ccd().authSetOpenAi(payload)
+            setAuth(next)
+          }}
+          onSwitchProvider={async (provider) => {
+            const next = await ccd().authSetProvider(provider)
+            setAuth(next)
+          }}
+          onClearClaudeKey={async () => {
+            const next = await ccd().authClearApiKey()
+            setAuth(next)
+          }}
+          onClearOpenAiKey={async () => {
+            const next = await ccd().authClearOpenAi()
+            setAuth(next)
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
     </div>
   )
+}
+
+function formatToolStep(
+  toolName?: string,
+  toolInput?: unknown,
+): { label: string; detail?: string } {
+  const name = toolName || 'tool'
+  const input =
+    toolInput && typeof toolInput === 'object'
+      ? (toolInput as Record<string, unknown>)
+      : typeof toolInput === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(toolInput) as Record<string, unknown>
+            } catch {
+              return { raw: toolInput }
+            }
+          })()
+        : {}
+
+  if (name === 'read_file' || name === 'Read') {
+    return { label: 'Reading file', detail: String(input.path ?? input.file_path ?? '') }
+  }
+  if (name === 'list_dir' || name === 'LS' || name === 'Glob') {
+    return {
+      label: 'Listing files',
+      detail: String(input.path ?? input.target_directory ?? input.pattern ?? '.'),
+    }
+  }
+  if (name === 'grep' || name === 'Grep') {
+    return {
+      label: 'Searching',
+      detail: String(input.pattern ?? input.query ?? ''),
+    }
+  }
+  if (name === 'Edit' || name === 'Write' || name === 'write_file') {
+    return { label: 'Editing', detail: String(input.path ?? input.file_path ?? name) }
+  }
+  if (name === 'Bash' || name === 'bash') {
+    const cmd = String(input.command ?? '')
+    return { label: 'Running command', detail: cmd.slice(0, 80) }
+  }
+
+  const detail = Object.values(input)
+    .filter((v) => typeof v === 'string')
+    .map(String)
+    .join(' ')
+    .slice(0, 80)
+  return { label: name, detail: detail || undefined }
 }

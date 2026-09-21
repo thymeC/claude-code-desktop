@@ -6,10 +6,17 @@ contextBridge.exposeInMainWorld('ccd', {
   cliBrowse: () => ipcRenderer.invoke('cli:browse'),
   projectOpen: () => ipcRenderer.invoke('project:open'),
   projectGet: () => ipcRenderer.invoke('project:get'),
+  projectList: () => ipcRenderer.invoke('project:list'),
+  projectSelect: (projectPath: string) => ipcRenderer.invoke('project:select', projectPath),
+  projectReorder: (orderedPaths: string[]) => ipcRenderer.invoke('project:reorder', orderedPaths),
+  projectRemove: (projectPath: string) => ipcRenderer.invoke('project:remove', projectPath),
   sessionNew: (projectPath: string) => ipcRenderer.invoke('session:new', projectPath),
   sessionResume: (projectPath: string, sessionId: string) =>
     ipcRenderer.invoke('session:resume', { projectPath, sessionId }),
   sessionList: (projectPath: string) => ipcRenderer.invoke('session:list', projectPath),
+  sessionTranscript: (projectPath: string, sessionId: string) =>
+    ipcRenderer.invoke('session:transcript', { projectPath, sessionId }),
+  sessionLive: () => ipcRenderer.invoke('session:live'),
   chatSend: (text: string, attachments?: AttachmentRef[]) =>
     ipcRenderer.invoke('chat:send', { text, attachments }),
   chatStop: () => ipcRenderer.invoke('chat:stop'),
@@ -32,6 +39,11 @@ contextBridge.exposeInMainWorld('ccd', {
   authStatus: () => ipcRenderer.invoke('auth:status'),
   authSetApiKey: (apiKey: string) => ipcRenderer.invoke('auth:setApiKey', apiKey),
   authClearApiKey: () => ipcRenderer.invoke('auth:clearApiKey'),
+  authSetOpenAi: (payload: { apiKey?: string; baseUrl?: string; model?: string }) =>
+    ipcRenderer.invoke('auth:setOpenAi', payload),
+  authClearOpenAi: () => ipcRenderer.invoke('auth:clearOpenAi'),
+  authSetProvider: (provider: 'claude' | 'openai') =>
+    ipcRenderer.invoke('auth:setProvider', provider),
   onChatEvent: (cb: (event: unknown) => void) => {
     const listener = (_: unknown, event: unknown) => cb(event)
     ipcRenderer.on('chat:event', listener)

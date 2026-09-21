@@ -39,18 +39,24 @@ export type CliStatus =
   | { found: true; path: string; version: string }
   | { found: false; guidance: string }
 
-export type AuthSource = 'env' | 'stored' | 'claude-login' | null
+export type ChatProvider = 'claude' | 'openai'
+
+export type AuthSource = 'env' | 'stored' | 'claude-login' | 'openai' | null
 
 export interface AuthStatus {
   authenticated: boolean
   source: AuthSource
   hasStoredKey: boolean
+  provider: ChatProvider
+  openaiBaseUrl?: string
+  openaiModel?: string
 }
 
 export interface SessionSummary {
   id: string
   mtime: number
   preview?: string
+  source?: 'claude' | 'openai'
 }
 
 export interface AppSettings {
@@ -58,4 +64,9 @@ export interface AppSettings {
   lastProjectPath?: string
   lastSessionId?: string
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+  fontSize?: number
+  recentProjects?: string[]
+  chatProvider?: ChatProvider
+  openaiBaseUrl?: string
+  openaiModel?: string
 }

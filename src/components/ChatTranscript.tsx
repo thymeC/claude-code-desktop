@@ -1,23 +1,41 @@
+import { MarkdownBody } from './MarkdownBody'
+
 export interface TranscriptItem {
   id: string
   role: 'user' | 'assistant' | 'system'
   text: string
 }
 
+export interface ActivityStep {
+  id: string
+  kind: 'thinking' | 'tool'
+  label: string
+  detail?: string
+  status: 'running' | 'done'
+}
+
 interface Props {
   items: TranscriptItem[]
   streaming: string
+  busy: boolean
+  activity: ActivityStep[]
   onCopy: (text: string) => void
 }
 
-export function ChatTranscript({ items, streaming, onCopy }: Props) {
+export function ChatTranscript({ items, streaming, busy, activity, onCopy }: Props) {
+  const showWorking = busy || Boolean(streaming) || activity.length > 0
+
   return (
     <div className="transcript">
       {items.map((item) => (
         <article key={item.id} className={`msg ${item.role}`}>
           {item.role === 'assistant' ? <div className="avatar" aria-hidden /> : null}
           <div className="msg-body">
-            <div className="msg-text">{item.text}</div>
+            {item.role === 'assistant' ? (
+              <MarkdownBody text={item.text} className="msg-text" onCopyCode={onCopy} />
+            ) : (
+              <div className="msg-text plain">{item.text}</div>
+            )}
             {item.role === 'assistant' ? (
               <button
                 type="button"
@@ -32,11 +50,45 @@ export function ChatTranscript({ items, streaming, onCopy }: Props) {
           </div>
         </article>
       ))}
-      {streaming ? (
-        <article className="msg assistant streaming">
+
+      {showWorking ? (
+        <article className="msg assistant working">
           <div className="avatar" aria-hidden />
           <div className="msg-body">
-            <div className="msg-text">{streaming}</div>
+            {(busy || activity.length > 0) && (
+              <div className="working-panel" aria-live="polite">
+                <div className="working-header">
+                  <span className={`working-spinner${busy ? ' on' : ''}`} aria-hidden />
+                  <span className="working-title">
+                    {busy
+                      ? streaming
+                        ? 'Writing…'
+                        : activity.some((s) => s.kind === 'tool')
+                          ? 'Working…'
+                          : 'Thinking…'
+                      : 'Done'}
+                  </span>
+                </div>
+                {activity.length > 0 ? (
+                  <ul className="working-steps">
+                    {activity.map((step) => (
+                      <li key={step.id} className={`working-step ${step.status}`}>
+                        <span className="working-step-icon" aria-hidden>
+                          {step.status === 'running' ? '◐' : '✓'}
+                        </span>
+                        <span className="working-step-label">{step.label}</span>
+                        {step.detail ? (
+                          <span className="working-step-detail muted">{step.detail}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : busy && !streaming ? (
+                  <p className="working-hint muted">Planning next steps…</p>
+                ) : null}
+              </div>
+            )}
+            {streaming ? <MarkdownBody text={streaming} className="msg-text" onCopyCode={onCopy} /> : null}
           </div>
         </article>
       ) : null}

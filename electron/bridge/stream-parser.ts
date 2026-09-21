@@ -4,7 +4,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
 
-export function normalizeCliLine(line: unknown): ChatEvent | null {
+export function normalizeCliLine(line: unknown): ChatEvent | ChatEvent[] | null {
   const obj = asRecord(line)
   if (!obj || typeof obj.type !== 'string') return null
 
@@ -28,6 +28,21 @@ export function normalizeCliLine(line: unknown): ChatEvent | null {
     if (text) {
       return { schemaVersion: SCHEMA_VERSION, type: 'message', role: 'assistant', text, raw: line }
     }
+
+    const tools: ChatEvent[] = []
+    for (const block of content) {
+      const b = asRecord(block)
+      if (b?.type === 'tool_use') {
+        tools.push({
+          schemaVersion: SCHEMA_VERSION,
+          type: 'tool',
+          toolName: typeof b.name === 'string' ? b.name : 'tool',
+          toolInput: b.input,
+          raw: line,
+        })
+      }
+    }
+    if (tools.length) return tools
   }
 
   if (obj.type === 'control_request') {
@@ -79,7 +94,8 @@ export function createStreamParser(onEvent: (event: ChatEvent) => void) {
         try {
           const parsed: unknown = JSON.parse(trimmed)
           const event = normalizeCliLine(parsed)
-          if (event) onEvent(event)
+          if (Array.isArray(event)) event.forEach(onEvent)
+          else if (event) onEvent(event)
         } catch {
           onEvent({
             schemaVersion: SCHEMA_VERSION,
