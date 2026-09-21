@@ -1,10 +1,17 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { AttachmentRef } from '../lib/types'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import type { AttachmentRef, ChatProvider } from '../lib/types'
+import {
+  CUSTOM_MODEL_ID,
+  displayModelLabel,
+  modelsForProvider,
+} from '../lib/models'
 
 interface Props {
   disabled?: boolean
   attachments: AttachmentRef[]
-  modelLabel: string
+  provider: ChatProvider
+  model: string
+  onModelChange: (model: string) => void
   onRemoveAttachment: (path: string) => void
   onAttachFile: () => void
   onAttachImage: () => void
@@ -17,7 +24,9 @@ interface Props {
 export function Composer({
   disabled,
   attachments,
-  modelLabel,
+  provider,
+  model,
+  onModelChange,
   onRemoveAttachment,
   onAttachFile,
   onAttachImage,
@@ -27,6 +36,22 @@ export function Composer({
   busy,
 }: Props) {
   const [text, setText] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [customMode, setCustomMode] = useState(false)
+  const [customDraft, setCustomDraft] = useState('')
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const options = modelsForProvider(provider)
+  const known = options.some((o) => o.id === model)
+  const label = displayModelLabel(provider, model)
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
@@ -41,9 +66,25 @@ export function Composer({
       e.preventDefault()
       submit()
     }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
-      // Prefer clipboard image when present (handled async by parent via paste event too)
+  }
+
+  function pick(id: string) {
+    if (id === CUSTOM_MODEL_ID) {
+      setCustomMode(true)
+      setCustomDraft(known ? '' : model)
+      return
     }
+    setCustomMode(false)
+    setMenuOpen(false)
+    onModelChange(id)
+  }
+
+  function applyCustom() {
+    const next = customDraft.trim()
+    if (!next && provider === 'openai') return
+    onModelChange(next)
+    setCustomMode(false)
+    setMenuOpen(false)
   }
 
   return (
@@ -95,7 +136,67 @@ export function Composer({
           </button>
         </div>
         <div className="composer-right">
-          <span className="model-label">{modelLabel}</span>
+          <div className="model-picker" ref={menuRef}>
+            <button
+              type="button"
+              className="model-picker-btn"
+              title="Select model"
+              disabled={disabled}
+              aria-expanded={menuOpen}
+              aria-haspopup="listbox"
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <span className="model-label">{label}</span>
+              <span className="model-caret" aria-hidden>
+                ▾
+              </span>
+            </button>
+            {menuOpen ? (
+              <div className="model-menu" role="listbox">
+                {options.map((opt) => (
+                  <button
+                    key={opt.id || 'default'}
+                    type="button"
+                    role="option"
+                    className={
+                      (!model && !opt.id) || model === opt.id ? 'model-option active' : 'model-option'
+                    }
+                    aria-selected={(!model && !opt.id) || model === opt.id}
+                    onClick={() => pick(opt.id)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={!known && model ? 'model-option active' : 'model-option'}
+                  onClick={() => pick(CUSTOM_MODEL_ID)}
+                >
+                  Custom…
+                </button>
+                {customMode ? (
+                  <div className="model-custom-row">
+                    <input
+                      autoFocus
+                      spellCheck={false}
+                      placeholder={provider === 'openai' ? 'model-id' : 'sonnet / model-id'}
+                      value={customDraft}
+                      onChange={(e) => setCustomDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          applyCustom()
+                        }
+                      }}
+                    />
+                    <button type="button" className="secondary" onClick={applyCustom}>
+                      Use
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           {busy ? (
             <button type="button" className="send-btn stop" onClick={onStop} title="Stop">
               ■

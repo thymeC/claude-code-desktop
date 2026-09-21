@@ -12,6 +12,8 @@ export interface BridgeStartOptions {
   resume?: boolean
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
   apiKey?: string
+  /** Passed to Claude Code as --model when set */
+  model?: string
   onEvent: (event: ChatEvent) => void
   onExit: (code: number | null) => void
 }
@@ -36,6 +38,10 @@ export class ClaudeBridge {
 
     if (opts.permissionMode && opts.permissionMode !== 'default') {
       args.push('--permission-mode', opts.permissionMode)
+    }
+
+    if (opts.model?.trim()) {
+      args.push('--model', opts.model.trim())
     }
 
     if (opts.resume && opts.sessionId) {

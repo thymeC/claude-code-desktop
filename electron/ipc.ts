@@ -80,6 +80,7 @@ function startClaudeBridge(opts: {
   resume?: boolean
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
   claudePath: string
+  model?: string
 }) {
   openaiChat.stop()
   bridge.stop()
@@ -90,6 +91,7 @@ function startClaudeBridge(opts: {
     sessionId: opts.sessionId,
     resume: opts.resume,
     permissionMode: opts.permissionMode,
+    model: opts.model,
     apiKey,
     onEvent: (event) => {
       send('chat:event', event)
@@ -284,6 +286,7 @@ export function registerIpc() {
       claudePath: status.path,
       projectPath,
       permissionMode: settings.permissionMode,
+      model: settings.claudeModel,
     })
     send('session:updated', { projectPath })
     return { ok: true as const, sessionId: null }
@@ -321,6 +324,7 @@ export function registerIpc() {
       sessionId: payload.sessionId,
       resume: true,
       permissionMode: settings.permissionMode,
+      model: settings.claudeModel,
     })
     send('session:updated', { projectPath: payload.projectPath })
     return { ok: true as const, alreadyLive: false as const }
@@ -394,10 +398,13 @@ export function registerIpc() {
   })
 
   ipcMain.handle('settings:get', async () => loadSettings())
-  ipcMain.handle(
-    'settings:set',
-    async (_e, partial: Parameters<typeof saveSettings>[0]) => saveSettings(partial),
-  )
+  ipcMain.handle('settings:set', async (_e, partial: Parameters<typeof saveSettings>[0]) => {
+    const next = saveSettings(partial)
+    if (typeof partial.openaiModel === 'string' && getProvider() === 'openai' && openaiChat.running) {
+      openaiChat.setModel(partial.openaiModel.trim() || 'gpt-4o-mini')
+    }
+    return next
+  })
 }
 
 export function stopBridge() {

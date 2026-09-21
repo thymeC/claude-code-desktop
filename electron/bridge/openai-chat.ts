@@ -65,6 +65,11 @@ export class OpenAiChat {
     return this.inFlight
   }
 
+  /** Update model for subsequent completions without restarting the session. */
+  setModel(model: string) {
+    if (this.opts) this.opts.model = model
+  }
+
   private emit(event: Omit<ChatEvent, 'schemaVersion' | 'sessionId'> & { sessionId?: string }) {
     if (!this.opts) return
     this.opts.onEvent({

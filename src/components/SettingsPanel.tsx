@@ -1,3 +1,4 @@
+import { OPENAI_MODEL_OPTIONS } from '../lib/models'
 import { useEffect, useState } from 'react'
 import type { AuthStatus, ChatProvider } from '../lib/types'
 
@@ -143,15 +144,38 @@ export function SettingsPanel({
             <label className="field-label" htmlFor="settings-model">
               Model
             </label>
-            <input
+            <select
               id="settings-model"
-              type="text"
-              spellCheck={false}
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="gpt-4o-mini"
+              value={OPENAI_MODEL_OPTIONS.some((m) => m.id === model) ? model : '__custom__'}
+              onChange={(e) => {
+                if (e.target.value === '__custom__') {
+                  setModel((prev) =>
+                    OPENAI_MODEL_OPTIONS.some((m) => m.id === prev) ? '' : prev,
+                  )
+                } else {
+                  setModel(e.target.value)
+                }
+              }}
               disabled={busy}
-            />
+            >
+              {OPENAI_MODEL_OPTIONS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+              <option value="__custom__">Custom…</option>
+            </select>
+            {!OPENAI_MODEL_OPTIONS.some((m) => m.id === model) ? (
+              <input
+                type="text"
+                spellCheck={false}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="custom-model-id"
+                disabled={busy}
+                style={{ marginTop: '0.35rem' }}
+              />
+            ) : null}
             <label className="field-label" htmlFor="settings-openai-key">
               API key
               {auth.provider === 'openai' && auth.hasStoredKey ? ' (saved — leave blank to keep)' : ''}

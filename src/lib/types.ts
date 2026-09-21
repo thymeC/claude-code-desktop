@@ -69,4 +69,6 @@ export interface AppSettings {
   chatProvider?: ChatProvider
   openaiBaseUrl?: string
   openaiModel?: string
+  /** Claude Code CLI --model (empty = CLI default) */
+  claudeModel?: string
 }

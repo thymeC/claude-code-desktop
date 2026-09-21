@@ -15,6 +15,8 @@ export interface AppSettings {
   chatProvider?: 'claude' | 'openai'
   openaiBaseUrl?: string
   openaiModel?: string
+  /** Claude Code CLI --model (empty = CLI default) */
+  claudeModel?: string
 }
 
 const MAX_RECENT_PROJECTS = 20

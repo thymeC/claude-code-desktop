@@ -43,6 +43,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
   const [projects, setProjects] = useState<string[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
 
   const uiCacheRef = useRef(new Map<string, SessionUiState>())
   const viewedSessionRef = useRef<string | null>(null)
@@ -219,6 +220,13 @@ export function App() {
   )
 
   useEffect(() => {
+    if (!auth) return
+    if (auth.provider === 'openai') {
+      setSelectedModel(auth.openaiModel ?? 'gpt-4o-mini')
+    }
+  }, [auth])
+
+  useEffect(() => {
     document.documentElement.style.setProperty('--ui-font-size', `${fontSize}px`)
     document.documentElement.style.setProperty(
       '--assistant-font-size',
@@ -233,6 +241,11 @@ export function App() {
       const settings = await ccd().settingsGet()
       if (typeof settings.fontSize === 'number') {
         setFontSize(Math.min(18, Math.max(12, settings.fontSize)))
+      }
+      if (authStatus.provider === 'openai') {
+        setSelectedModel(authStatus.openaiModel ?? settings.openaiModel ?? 'gpt-4o-mini')
+      } else {
+        setSelectedModel(settings.claudeModel ?? '')
       }
       const canUseApp =
         authStatus.authenticated && (authStatus.provider === 'openai' || status.found)
@@ -380,6 +393,18 @@ export function App() {
   async function changeFontSize(size: number) {
     setFontSize(size)
     await ccd().settingsSet({ fontSize: size })
+  }
+
+  async function changeModel(model: string) {
+    setSelectedModel(model)
+    if (auth?.provider === 'openai') {
+      await ccd().settingsSet({ openaiModel: model.trim() || 'gpt-4o-mini' })
+      setAuth(await ccd().authStatus())
+    } else {
+      await ccd().settingsSet({
+        claudeModel: model.trim() ? model.trim() : undefined,
+      })
+    }
   }
 
   async function startNewChat(path = projectPath) {
@@ -612,15 +637,6 @@ export function App() {
     )
   }
 
-  const modelLabel =
-    auth.provider === 'openai'
-      ? auth.openaiModel ?? 'OpenAI'
-      : cli.found && cli.version.includes('Claude')
-        ? 'Claude Code'
-        : cli.found
-          ? cli.version
-          : 'Claude Code'
-
   return (
     <div className={`desktop-shell${rightOpen ? ' with-right' : ''}`}>
       <LeftNav
@@ -681,7 +697,9 @@ export function App() {
               <Composer
                 disabled={!!permission}
                 attachments={attachments}
-                modelLabel={modelLabel}
+                provider={auth.provider}
+                model={selectedModel}
+                onModelChange={(m) => void changeModel(m)}
                 onRemoveAttachment={(p) => setAttachments((prev) => prev.filter((a) => a.path !== p))}
                 onAttachFile={() =>
                   void ccd()
