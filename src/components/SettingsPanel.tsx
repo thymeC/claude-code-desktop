@@ -40,7 +40,7 @@ export function SettingsPanel({
   onClearOpenAiKey,
   onClose,
 }: Props) {
-  const [openaiEnabled, setOpenaiEnabled] = useState(auth.provider === 'openai')
+  const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(auth.provider)
   const [baseUrl, setBaseUrl] = useState(auth.openaiBaseUrl ?? 'https://api.openai.com/v1')
   const [openaiKey, setOpenaiKey] = useState('')
   const [claudeKey, setClaudeKey] = useState('')
@@ -50,11 +50,11 @@ export function SettingsPanel({
   const [error, setError] = useState<string | null>(null)
 
   const catalog = mergeModelCatalog(modelCatalog)
-  const provider: ChatProvider = openaiEnabled ? 'openai' : 'claude'
+  const provider = selectedProvider
   const providerModels = modelsForProvider(catalog, provider)
 
   useEffect(() => {
-    setOpenaiEnabled(auth.provider === 'openai')
+    setSelectedProvider(auth.provider)
     setBaseUrl(auth.openaiBaseUrl ?? 'https://api.openai.com/v1')
   }, [auth])
 
@@ -64,9 +64,30 @@ export function SettingsPanel({
     setMessage(null)
     try {
       await action()
-      setMessage(ok)
+      if (ok) setMessage(ok)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function selectProvider(next: ChatProvider) {
+    setSelectedProvider(next)
+    setError(null)
+    setMessage(null)
+    if (next === auth.provider) return
+    if (next === 'claude') {
+      await run(() => onSwitchProvider('claude'), 'Switched to Anthropic (Claude Code).')
+      return
+    }
+    // Switch when a key exists; otherwise keep the OpenAI form open for Save
+    try {
+      setBusy(true)
+      await onSwitchProvider('openai')
+      setMessage('Switched to OpenAI API.')
+    } catch {
+      setMessage('Enter and save an OpenAI API key to activate OpenAI mode.')
     } finally {
       setBusy(false)
     }
@@ -99,13 +120,22 @@ export function SettingsPanel({
 
   async function refreshFromApi() {
     await run(async () => {
-      const res = await ccd().openaiListModels()
-      if (!res.ok || !res.models?.length) {
-        throw new Error(res.error ?? 'Failed to fetch models')
+      if (provider === 'openai') {
+        const res = await ccd().openaiListModels()
+        if (!res.ok || !res.models?.length) {
+          throw new Error(res.error ?? 'Failed to fetch models')
+        }
+        const next = syncRemoteModels(catalog, 'openai', res.models)
+        await onModelCatalogChange(next)
+      } else {
+        const res = await ccd().anthropicListModels()
+        if (!res.ok || !res.models?.length) {
+          throw new Error(res.error ?? 'Failed to fetch models')
+        }
+        // Keep empty "Default" (CLI default); replace the rest with Anthropic /models
+        const next = syncRemoteModels(catalog, 'claude', res.models, { keepIds: [''] })
+        await onModelCatalogChange(next)
       }
-      // Replace OpenAI catalog with the live /models list
-      const next = syncRemoteModels(catalog, 'openai', res.models)
-      await onModelCatalogChange(next)
     }, 'Synced models from API.')
   }
 
@@ -156,30 +186,41 @@ export function SettingsPanel({
         <hr className="settings-divider" />
 
         <div className="settings-row">
-          <div className="settings-label">OpenAI test mode</div>
-          <div className="muted settings-hint">
-            Active provider: {auth.provider === 'openai' ? 'OpenAI' : 'Claude Code'}
+          <div className="settings-label">Provider</div>
+          <div className="muted settings-hint">Choose which API powers chat.</div>
+          <div className="provider-radio-group" role="radiogroup" aria-label="Chat provider">
+            <label className="toggle-row">
+              <input
+                type="radio"
+                name="chat-provider"
+                value="claude"
+                checked={selectedProvider === 'claude'}
+                disabled={busy}
+                onChange={() => void selectProvider('claude')}
+              />
+              <span>
+                <span className="provider-radio-title">Anthropic (Claude Code)</span>
+                <span className="muted settings-hint">Uses Claude Code CLI + Anthropic API key</span>
+              </span>
+            </label>
+            <label className="toggle-row">
+              <input
+                type="radio"
+                name="chat-provider"
+                value="openai"
+                checked={selectedProvider === 'openai'}
+                disabled={busy}
+                onChange={() => void selectProvider('openai')}
+              />
+              <span>
+                <span className="provider-radio-title">OpenAI API</span>
+                <span className="muted settings-hint">OpenAI-compatible base URL + API key</span>
+              </span>
+            </label>
           </div>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={openaiEnabled}
-              disabled={busy}
-              onChange={(e) => {
-                const on = e.target.checked
-                setOpenaiEnabled(on)
-                setError(null)
-                setMessage(null)
-                if (!on && auth.provider === 'openai') {
-                  void run(() => onSwitchProvider('claude'), 'Switched to Claude Code.')
-                }
-              }}
-            />
-            <span>Enable OpenAI URL / API key</span>
-          </label>
         </div>
 
-        {openaiEnabled ? (
+        {selectedProvider === 'openai' ? (
           <div className="settings-openai">
             <label className="field-label" htmlFor="settings-base-url">
               Base URL
@@ -226,6 +267,7 @@ export function SettingsPanel({
                       model,
                     })
                     setOpenaiKey('')
+                    setSelectedProvider('openai')
                   }, 'OpenAI settings saved.')
                 }
               >
@@ -239,7 +281,7 @@ export function SettingsPanel({
                   onClick={() =>
                     void run(async () => {
                       await onClearOpenAiKey()
-                      setOpenaiEnabled(false)
+                      setSelectedProvider('claude')
                     }, 'OpenAI key cleared.')
                   }
                 >
@@ -273,6 +315,7 @@ export function SettingsPanel({
                   void run(async () => {
                     await onSaveClaudeKey(claudeKey.trim())
                     setClaudeKey('')
+                    setSelectedProvider('claude')
                   }, 'Anthropic API key saved.')
                 }
               >
@@ -301,20 +344,18 @@ export function SettingsPanel({
             in the chat picker.
             {provider === 'openai'
               ? ' Refresh replaces the OpenAI list with your gateway’s real /models response.'
-              : ''}
+              : ' Refresh loads Anthropic /v1/models (requires an API key) and keeps Default.'}
           </div>
-          {provider === 'openai' ? (
-            <div className="row settings-actions" style={{ marginTop: '0.35rem' }}>
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={() => void refreshFromApi()}
-              >
-                {busy ? 'Refreshing…' : 'Refresh from API'}
-              </button>
-            </div>
-          ) : null}
+          <div className="row settings-actions" style={{ marginTop: '0.35rem' }}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => void refreshFromApi()}
+            >
+              {busy ? 'Refreshing…' : 'Refresh from API'}
+            </button>
+          </div>
           <ul className="model-catalog-list">
             {providerModels.map((m) => (
               <li key={`${m.provider}-${m.id || 'default'}`} className="model-catalog-row">

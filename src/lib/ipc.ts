@@ -52,6 +52,11 @@ export interface CcdApi {
     models: Array<{ id: string; label: string }> | null
     error: string | null
   }>
+  anthropicListModels: () => Promise<{
+    ok: boolean
+    models: Array<{ id: string; label: string }> | null
+    error: string | null
+  }>
   filesPick: () => Promise<AttachmentRef[]>
   filesPickImages: () => Promise<AttachmentRef[]>
   filesStagePaths: (paths: string[]) => Promise<AttachmentRef[]>

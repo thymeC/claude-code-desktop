@@ -30,6 +30,7 @@ import {
   saveOpenAiKey,
 } from './bridge/auth'
 import { fetchOpenAiModels } from './bridge/openai-models'
+import { fetchAnthropicModels } from './bridge/anthropic-models'
 import type { AttachmentRef, PermissionDecision } from './bridge/types'
 import { SCHEMA_VERSION } from './bridge/types'
 
@@ -166,6 +167,22 @@ export function registerIpc() {
       apiKey,
       idPrefix: opts?.idPrefix,
     })
+    if (!result.ok) {
+      return { ok: false as const, models: null, error: result.error }
+    }
+    return { ok: true as const, models: result.models, error: null }
+  })
+
+  ipcMain.handle('anthropic:listModels', async () => {
+    const apiKey = resolveApiKeyForEnv()
+    if (!apiKey) {
+      return {
+        ok: false as const,
+        models: null,
+        error: 'No Anthropic API key configured. Save a key in Settings to refresh models.',
+      }
+    }
+    const result = await fetchAnthropicModels({ apiKey })
     if (!result.ok) {
       return { ok: false as const, models: null, error: result.error }
     }

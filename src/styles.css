@@ -1209,6 +1209,23 @@ button {
   margin-top: 0.2rem;
 }
 
+.provider-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.45rem;
+}
+
+.provider-radio-title {
+  display: block;
+  font-weight: 550;
+}
+
+.provider-radio-group .settings-hint {
+  display: block;
+  margin-top: 0.1rem;
+}
+
 .settings-openai {
   display: flex;
   flex-direction: column;

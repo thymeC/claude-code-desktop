@@ -56,10 +56,13 @@ export function mergeModelCatalog(saved?: ModelEntry[]): ModelEntry[] {
   if (!saved?.length) return defaults
 
   const openAiFromApi = saved.some((m) => m?.provider === 'openai' && m.fromApi)
+  const claudeFromApi = saved.some((m) => m?.provider === 'claude' && m.fromApi)
   const byKey = new Map<string, ModelEntry>()
 
   for (const m of defaults) {
     if (m.provider === 'openai' && openAiFromApi) continue
+    // After Anthropic /models sync, keep only the empty "Default" builtin
+    if (m.provider === 'claude' && claudeFromApi && m.id !== '') continue
     byKey.set(entryKey(m), { ...m })
   }
 
@@ -173,22 +176,22 @@ export function ensureSavedModelInCatalog(
 
 /**
  * Replace models for `provider` whose ids match `idPrefix` with the live /models
- * list. Built-ins not returned by the API (e.g. gpt-4o on a custom gateway) are
- * dropped so the catalog matches what the server actually supports.
- * With no prefix, replaces the entire provider list (Claude entries are untouched
- * when syncing OpenAI).
+ * list. Built-ins not returned by the API are dropped so the catalog matches what
+ * the server actually supports. Use `keepIds` to retain entries (e.g. Claude Default).
  */
 export function syncRemoteModels(
   catalog: ModelEntry[],
   provider: ChatProvider,
   remote: Array<{ id: string; label?: string }>,
-  opts?: { idPrefix?: string },
+  opts?: { idPrefix?: string; keepIds?: string[] },
 ): ModelEntry[] {
   const prefix = (opts?.idPrefix ?? '').trim().toLowerCase()
+  const keepIds = new Set(opts?.keepIds ?? [])
   const base = mergeModelCatalog(catalog)
 
   const kept = base.filter((m) => {
     if (m.provider !== provider) return true
+    if (keepIds.has(m.id)) return true
     if (!prefix) return false
     return !m.id.toLowerCase().startsWith(prefix)
   })
@@ -198,6 +201,7 @@ export function syncRemoteModels(
     const id = r.id.trim()
     if (!id) continue
     if (prefix && !id.toLowerCase().startsWith(prefix)) continue
+    if (keepIds.has(id)) continue
     next.push({
       id,
       label: r.label?.trim() || id,

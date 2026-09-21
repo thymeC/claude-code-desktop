@@ -4,13 +4,20 @@ Local desktop GUI shell around the [Claude Code](https://code.claude.com/docs/en
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20+ (this repo sets `engines.node` to `>=20`; Node 18 will warn on install)
 - Claude Code CLI installed and logged in (`claude` on your PATH)
 
-If Electron fails to download (e.g. GitHub timeouts), this repo’s `.npmrc` points `electron_mirror` at npmmirror. Or:
+If Electron fails to download (e.g. GitHub timeouts), set a mirror via env — do **not** put `electron_mirror` in `.npmrc` (npm warns: unknown project config):
 
 ```bash
+# macOS / Linux
 ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" npm install
+
+# Windows PowerShell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"; npm install
+
+# Windows CMD
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && npm install
 ```
 
 ## Develop

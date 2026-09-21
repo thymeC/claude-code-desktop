@@ -87,4 +87,24 @@ describe('claude catalog', () => {
     ).toBe(true)
     expect(resolveEnabledSelection(ensured, 'claude', 'claude-opus-5')).toBe('claude-opus-5')
   })
+
+  it('keeps Default when syncing Claude from Anthropic API', () => {
+    const synced = syncRemoteModels(
+      defaultModelCatalog(),
+      'claude',
+      [
+        { id: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
+        { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+      ],
+      { keepIds: [''] },
+    )
+    const claude = synced.filter((m) => m.provider === 'claude')
+    expect(claude.some((m) => m.id === '' && m.label === 'Default')).toBe(true)
+    expect(claude.some((m) => m.id === 'claude-opus-4-20250514' && m.fromApi)).toBe(true)
+    expect(claude.some((m) => m.id === 'sonnet')).toBe(false)
+
+    const merged = mergeModelCatalog(synced)
+    expect(merged.some((m) => m.provider === 'claude' && m.id === '')).toBe(true)
+    expect(merged.some((m) => m.provider === 'claude' && m.id === 'haiku' && !m.fromApi)).toBe(false)
+  })
 })
