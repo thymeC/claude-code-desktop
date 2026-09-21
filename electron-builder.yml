@@ -11,6 +11,7 @@ mac:
     - zip
   category: public.app-category.developer-tools
 win:
+  signAndEditExecutable: false
   target:
     - nsis
     - zip
