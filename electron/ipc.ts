@@ -94,6 +94,13 @@ export function registerIpc() {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       title: 'Select claude binary',
+      filters:
+        process.platform === 'win32'
+          ? [
+              { name: 'Claude CLI', extensions: ['cmd', 'exe', 'bat'] },
+              { name: 'All files', extensions: ['*'] },
+            ]
+          : undefined,
     })
     if (result.canceled || !result.filePaths[0]) return null
     const claudePath = result.filePaths[0]

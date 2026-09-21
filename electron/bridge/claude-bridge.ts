@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
+import { cliSpawnNeedsShell } from './cli-detector'
 import { createStreamParser } from './stream-parser'
 import type { AttachmentRef, ChatEvent, PermissionDecision } from './types'
 import { SCHEMA_VERSION } from './types'
@@ -50,6 +51,9 @@ export class ClaudeBridge {
         ...(opts.apiKey ? { ANTHROPIC_API_KEY: opts.apiKey } : {}),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
+      // npm's claude.cmd shim cannot be CreateProcess'd without a shell on Windows
+      shell: cliSpawnNeedsShell(opts.claudePath),
+      windowsHide: true,
     })
 
     this.child.stdout.setEncoding('utf8')
