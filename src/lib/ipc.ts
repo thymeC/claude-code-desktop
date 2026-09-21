@@ -12,7 +12,7 @@ export interface CcdApi {
   cliBrowse: () => Promise<CliStatus | null>
   projectOpen: () => Promise<string | null>
   projectGet: () => Promise<string | null>
-  sessionNew: (projectPath: string) => Promise<{ ok: true; sessionId: string }>
+  sessionNew: (projectPath: string) => Promise<{ ok: true; sessionId: string | null }>
   sessionResume: (projectPath: string, sessionId: string) => Promise<{ ok: true }>
   sessionList: (projectPath: string) => Promise<SessionSummary[]>
   chatSend: (text: string, attachments?: AttachmentRef[]) => Promise<void>
@@ -21,7 +21,11 @@ export interface CcdApi {
   settingsGet: () => Promise<AppSettings>
   settingsSet: (partial: Partial<AppSettings>) => Promise<AppSettings>
   filesPick: () => Promise<AttachmentRef[]>
+  filesPickImages: () => Promise<AttachmentRef[]>
   filesStagePaths: (paths: string[]) => Promise<AttachmentRef[]>
+  filesPasteImage: () => Promise<AttachmentRef>
+  clipboardWriteText: (text: string) => Promise<boolean>
+  getPathForFile: (file: File) => string
   onChatEvent: (cb: (event: ChatEvent) => void) => () => void
   onCliStatus: (cb: (status: CliStatus) => void) => () => void
   onSessionUpdated: (cb: (payload: unknown) => void) => () => void

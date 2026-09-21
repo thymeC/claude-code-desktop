@@ -32,6 +32,7 @@ export interface AttachmentRef {
   name: string
   mimeType: string
   size: number
+  previewDataUrl?: string
 }
 
 export type CliStatus =

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { AttachmentRef, PermissionDecision } from './bridge/types'
 
 contextBridge.exposeInMainWorld('ccd', {
@@ -16,7 +16,17 @@ contextBridge.exposeInMainWorld('ccd', {
   chatRespondPermission: (decision: PermissionDecision) =>
     ipcRenderer.invoke('chat:respondPermission', decision),
   filesPick: () => ipcRenderer.invoke('files:pick'),
+  filesPickImages: () => ipcRenderer.invoke('files:pickImages'),
   filesStagePaths: (paths: string[]) => ipcRenderer.invoke('files:stagePaths', paths),
+  filesPasteImage: () => ipcRenderer.invoke('files:pasteImage'),
+  clipboardWriteText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  },
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:set', partial),
   onChatEvent: (cb: (event: unknown) => void) => {

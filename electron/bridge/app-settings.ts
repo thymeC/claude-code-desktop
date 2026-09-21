@@ -22,7 +22,10 @@ export function loadSettings(): AppSettings {
 }
 
 export function saveSettings(partial: Partial<AppSettings>): AppSettings {
-  const next = { ...loadSettings(), ...partial }
+  const next: AppSettings = { ...loadSettings(), ...partial }
+  for (const key of Object.keys(partial) as (keyof AppSettings)[]) {
+    if (partial[key] === undefined) delete next[key]
+  }
   fs.mkdirSync(path.dirname(settingsPath()), { recursive: true })
   fs.writeFileSync(settingsPath(), JSON.stringify(next, null, 2))
   return next

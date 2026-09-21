@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import fs from 'node:fs'
 import { createStreamParser } from './stream-parser'
 import type { AttachmentRef, ChatEvent, PermissionDecision } from './types'
 import { SCHEMA_VERSION } from './types'
@@ -71,17 +72,39 @@ export class ClaudeBridge {
       throw new Error('ClaudeBridge is not running')
     }
 
-    let prompt = text
+    const content: unknown[] = []
+    if (text.trim()) {
+      content.push({ type: 'text', text })
+    }
+
     for (const file of attachments) {
-      const kind = file.mimeType.startsWith('image/') ? 'image' : 'file'
-      prompt += `\n[Attached ${kind}: ${file.path}]`
+      if (file.mimeType.startsWith('image/')) {
+        const data = fs.readFileSync(file.path).toString('base64')
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: file.mimeType,
+            data,
+          },
+        })
+      } else {
+        content.push({
+          type: 'text',
+          text: `\n[Attached file: ${file.path}]`,
+        })
+      }
+    }
+
+    if (content.length === 0) {
+      content.push({ type: 'text', text: '' })
     }
 
     const payload = {
       type: 'user',
       message: {
         role: 'user',
-        content: [{ type: 'text', text: prompt }],
+        content,
       },
     }
     this.child.stdin.write(`${JSON.stringify(payload)}\n`)
