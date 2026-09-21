@@ -20,20 +20,51 @@ npm install
 npm run dev
 ```
 
+## Rebuild
+
+Production build (renderer + Electron main/preload into `dist/` and `dist-electron/`):
+
+```bash
+npm run build
+```
+
+Unpackaged app folder (good for a quick local smoke of the built app):
+
+```bash
+npm run pack
+```
+
+Then open:
+
+```bash
+open "release/mac-arm64/Claude Code Desktop.app"
+```
+
+Full installers (DMG + zip on macOS):
+
+```bash
+npm run dist
+```
+
+Artifacts land in `release/` (e.g. `Claude Code Desktop-0.1.0-arm64.dmg`).
+
+After pulling new changes, a typical rebuild is:
+
+```bash
+npm install
+npm run build
+npm run dist
+```
+
 ## Test
 
 ```bash
 npm test
 npm run typecheck
 ```
+## Auth
 
-## Package
-
-```bash
-npm run dist
-```
-
-Artifacts land in `release/`.
+Enter an Anthropic API key when prompted (or set `ANTHROPIC_API_KEY` in your environment). The app stores the key encrypted via the OS keychain when available and passes it to Claude Code as `ANTHROPIC_API_KEY`.
 
 ## Docs
 

@@ -10,6 +10,7 @@ export interface BridgeStartOptions {
   sessionId?: string
   resume?: boolean
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+  apiKey?: string
   onEvent: (event: ChatEvent) => void
   onExit: (code: number | null) => void
 }
@@ -44,7 +45,10 @@ export class ClaudeBridge {
 
     this.child = spawn(opts.claudePath, args, {
       cwd: opts.projectPath,
-      env: process.env,
+      env: {
+        ...process.env,
+        ...(opts.apiKey ? { ANTHROPIC_API_KEY: opts.apiKey } : {}),
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 

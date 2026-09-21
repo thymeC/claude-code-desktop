@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   AttachmentRef,
+  AuthStatus,
   ChatEvent,
   CliStatus,
   PermissionDecision,
@@ -20,6 +21,9 @@ export interface CcdApi {
   chatRespondPermission: (decision: PermissionDecision) => Promise<void>
   settingsGet: () => Promise<AppSettings>
   settingsSet: (partial: Partial<AppSettings>) => Promise<AppSettings>
+  authStatus: () => Promise<AuthStatus>
+  authSetApiKey: (apiKey: string) => Promise<AuthStatus>
+  authClearApiKey: () => Promise<AuthStatus>
   filesPick: () => Promise<AttachmentRef[]>
   filesPickImages: () => Promise<AttachmentRef[]>
   filesStagePaths: (paths: string[]) => Promise<AttachmentRef[]>

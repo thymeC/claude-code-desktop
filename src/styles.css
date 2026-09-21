@@ -63,32 +63,7 @@ button {
 }
 
 .mode-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: #e7e2d9;
-  border-radius: 999px;
-  padding: 3px;
-}
-
-.mode-btn {
-  border: none;
-  background: transparent;
-  border-radius: 999px;
-  padding: 0.4rem 0.5rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.mode-btn.active {
-  background: #fff;
-  color: var(--fg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-
-.mode-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
+  display: none;
 }
 
 .nav-actions {
@@ -511,6 +486,38 @@ button {
   border: 1px solid var(--border);
   padding: 1rem;
   border-radius: 12px;
+}
+
+.api-key-prompt input[type='password'] {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font: inherit;
+  background: #fff;
+  color: var(--fg);
+}
+
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin: 0.4rem 0 0;
+}
+
+.api-key-prompt button.secondary {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 0.55rem 1.1rem;
 }
 
 .row {

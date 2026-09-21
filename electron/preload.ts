@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('ccd', {
   },
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:set', partial),
+  authStatus: () => ipcRenderer.invoke('auth:status'),
+  authSetApiKey: (apiKey: string) => ipcRenderer.invoke('auth:setApiKey', apiKey),
+  authClearApiKey: () => ipcRenderer.invoke('auth:clearApiKey'),
   onChatEvent: (cb: (event: unknown) => void) => {
     const listener = (_: unknown, event: unknown) => cb(event)
     ipcRenderer.on('chat:event', listener)

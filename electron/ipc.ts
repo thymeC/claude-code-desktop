@@ -6,6 +6,12 @@ import { detectClaudeCli } from './bridge/cli-detector'
 import { loadSettings, saveSettings } from './bridge/app-settings'
 import { stageImageBuffer, validateAndStage } from './bridge/file-service'
 import { listSessions } from './bridge/session-store'
+import {
+  clearApiKey,
+  getAuthStatus,
+  resolveApiKeyForEnv,
+  saveApiKey,
+} from './bridge/auth'
 import type { AttachmentRef, PermissionDecision } from './bridge/types'
 import { SCHEMA_VERSION } from './bridge/types'
 
@@ -27,6 +33,10 @@ async function requireClaude() {
   const settings = loadSettings()
   const status = await detectClaudeCli({ explicitPath: settings.claudePath })
   if (!status.found) throw new Error(status.guidance)
+  const auth = getAuthStatus()
+  if (!auth.authenticated) {
+    throw new Error('No API key configured. Add an Anthropic API key to continue.')
+  }
   return { settings, status }
 }
 
@@ -38,12 +48,14 @@ function startBridge(opts: {
   claudePath: string
 }) {
   bridge.stop()
+  const apiKey = resolveApiKeyForEnv()
   bridge.start({
     claudePath: opts.claudePath,
     projectPath: opts.projectPath,
     sessionId: opts.sessionId,
     resume: opts.resume,
     permissionMode: opts.permissionMode,
+    apiKey,
     onEvent: (event) => {
       send('chat:event', event)
       if (event.sessionId) saveSettings({ lastSessionId: event.sessionId })
@@ -64,6 +76,18 @@ export function registerIpc() {
     const status = await detectClaudeCli({ explicitPath: settings.claudePath })
     send('cli:status', status)
     return status
+  })
+
+  ipcMain.handle('auth:status', async () => getAuthStatus())
+
+  ipcMain.handle('auth:setApiKey', async (_e, apiKey: string) => {
+    saveApiKey(apiKey)
+    return getAuthStatus()
+  })
+
+  ipcMain.handle('auth:clearApiKey', async () => {
+    clearApiKey()
+    return getAuthStatus()
   })
 
   ipcMain.handle('cli:browse', async () => {
@@ -94,7 +118,6 @@ export function registerIpc() {
   ipcMain.handle('session:new', async (_e, projectPath: string) => {
     const { settings, status } = await requireClaude()
     saveSettings({ lastProjectPath: projectPath, lastSessionId: undefined })
-    // Let Claude Code allocate the session id — do not force a pre-created UUID
     startBridge({
       claudePath: status.path,
       projectPath,

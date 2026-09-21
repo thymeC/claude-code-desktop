@@ -12,15 +12,6 @@ interface Props {
 export function LeftNav({ projectPath, sessions, activeId, onNew, onOpenProject, onSelect }: Props) {
   return (
     <aside className="left-nav">
-      <div className="mode-toggle" role="tablist" aria-label="Mode">
-        <button type="button" className="mode-btn" disabled title="Coming soon">
-          Cowork
-        </button>
-        <button type="button" className="mode-btn active" role="tab" aria-selected>
-          Code
-        </button>
-      </div>
-
       <nav className="nav-actions">
         <button type="button" className="nav-item primary" onClick={onNew} disabled={!projectPath}>
           <span className="nav-plus">+</span> New
@@ -28,19 +19,10 @@ export function LeftNav({ projectPath, sessions, activeId, onNew, onOpenProject,
         <button type="button" className="nav-item" onClick={onOpenProject}>
           Projects
         </button>
-        <button type="button" className="nav-item" disabled title="Coming soon">
-          Artifacts
-        </button>
-        <button type="button" className="nav-item" disabled title="Coming soon">
-          Scheduled
-        </button>
-        <button type="button" className="nav-item" disabled title="Coming soon">
-          Customize
-        </button>
       </nav>
 
       <div className="tasks-block">
-        <div className="tasks-label">Tasks</div>
+        <div className="tasks-label">Chats</div>
         <ul className="task-list">
           {sessions.map((s) => (
             <li key={s.id}>

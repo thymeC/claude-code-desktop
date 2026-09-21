@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ccd } from './lib/ipc'
-import type { AttachmentRef, ChatEvent, CliStatus, SessionSummary } from './lib/types'
+import type { AttachmentRef, AuthStatus, ChatEvent, CliStatus, SessionSummary } from './lib/types'
 import { Onboarding } from './components/Onboarding'
+import { ApiKeyPrompt } from './components/ApiKeyPrompt'
 import { ChatTranscript, type TranscriptItem } from './components/ChatTranscript'
 import { Composer } from './components/Composer'
 import { LeftNav } from './components/LeftNav'
@@ -10,6 +11,7 @@ import { PermissionModal } from './components/PermissionModal'
 
 export function App() {
   const [cli, setCli] = useState<CliStatus | null>(null)
+  const [auth, setAuth] = useState<AuthStatus | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [items, setItems] = useState<TranscriptItem[]>([])
   const [streaming, setStreaming] = useState('')
@@ -31,6 +33,12 @@ export function App() {
     return status
   }
 
+  async function refreshAuth() {
+    const status = await ccd().authStatus()
+    setAuth(status)
+    return status
+  }
+
   const refreshSessions = useCallback(async (path: string) => {
     const list = await ccd().sessionList(path)
     setSessions(list)
@@ -39,7 +47,8 @@ export function App() {
   useEffect(() => {
     void (async () => {
       const status = await refreshCli()
-      if (status.found) {
+      const authStatus = await refreshAuth()
+      if (status.found && authStatus.authenticated) {
         const path = await ccd().projectGet()
         setProjectPath(path)
         if (path) await refreshSessions(path)
@@ -184,7 +193,7 @@ export function App() {
     window.setTimeout(() => setCopyToast(false), 1200)
   }
 
-  if (!cli) {
+  if (!cli || !auth) {
     return <main className="app-shell">Loading…</main>
   }
 
@@ -195,6 +204,25 @@ export function App() {
           status={cli}
           onRecheck={() => void refreshCli()}
           onBrowse={() => void ccd().cliBrowse().then((s) => s && setCli(s))}
+        />
+      </main>
+    )
+  }
+
+  if (!auth.authenticated) {
+    return (
+      <main className="app-shell">
+        <ApiKeyPrompt
+          hasStoredKey={auth.hasStoredKey}
+          source={auth.source}
+          onSave={async (apiKey) => {
+            const next = await ccd().authSetApiKey(apiKey)
+            setAuth(next)
+          }}
+          onClear={async () => {
+            const next = await ccd().authClearApiKey()
+            setAuth(next)
+          }}
         />
       </main>
     )

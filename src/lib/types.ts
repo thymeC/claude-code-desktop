@@ -39,6 +39,14 @@ export type CliStatus =
   | { found: true; path: string; version: string }
   | { found: false; guidance: string }
 
+export type AuthSource = 'env' | 'stored' | 'claude-login' | null
+
+export interface AuthStatus {
+  authenticated: boolean
+  source: AuthSource
+  hasStoredKey: boolean
+}
+
 export interface SessionSummary {
   id: string
   mtime: number
