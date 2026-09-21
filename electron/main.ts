@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { registerIpc, stopBridge } from './ipc'
+import { clearAttachmentStaging, registerIpc, stopBridge } from './ipc'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -36,4 +36,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopBridge()
+  clearAttachmentStaging()
 })

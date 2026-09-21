@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ccd } from './lib/ipc'
-import type { AttachmentRef, ChatEvent, CliStatus } from './lib/types'
+import type { AttachmentRef, ChatEvent, CliStatus, SessionSummary } from './lib/types'
 import { Onboarding } from './components/Onboarding'
 import { ProjectBar } from './components/ProjectBar'
 import { ChatTranscript, type TranscriptItem } from './components/ChatTranscript'
 import { Composer } from './components/Composer'
+import { SessionSidebar } from './components/SessionSidebar'
+import { PermissionModal } from './components/PermissionModal'
 
 export function App() {
   const [cli, setCli] = useState<CliStatus | null>(null)
@@ -15,6 +17,12 @@ export function App() {
   const [attachments, setAttachments] = useState<AttachmentRef[]>([])
   const [error, setError] = useState<string | null>(null)
   const [sessionReady, setSessionReady] = useState(false)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [permission, setPermission] = useState<ChatEvent | null>(null)
+  const [permissionMode, setPermissionMode] = useState<
+    'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+  >('default')
 
   async function refreshCli() {
     const status = await ccd().cliCheck()
@@ -22,12 +30,20 @@ export function App() {
     return status
   }
 
+  const refreshSessions = useCallback(async (path: string) => {
+    const list = await ccd().sessionList(path)
+    setSessions(list)
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const status = await refreshCli()
+      const settings = await ccd().settingsGet()
+      if (settings.permissionMode) setPermissionMode(settings.permissionMode)
       if (status.found) {
         const path = await ccd().projectGet()
         setProjectPath(path)
+        if (path) await refreshSessions(path)
       }
     })()
 
@@ -42,6 +58,8 @@ export function App() {
           { id: crypto.randomUUID(), role: event.role ?? 'assistant', text: event.text! },
         ])
         setBusy(false)
+      } else if (event.type === 'permission_request') {
+        setPermission(event)
       } else if (event.type === 'error' && event.error) {
         setError(event.error)
         setBusy(false)
@@ -49,22 +67,25 @@ export function App() {
         setBusy(false)
         setStreaming((prev) => {
           if (prev) {
-            setItems((items) => [
-              ...items,
+            setItems((curr) => [
+              ...curr,
               { id: crypto.randomUUID(), role: 'assistant', text: prev },
             ])
           }
           return ''
         })
+        if (event.sessionId) setActiveSessionId(event.sessionId)
       }
     })
-  }, [])
+  }, [refreshSessions])
 
   async function ensureSession(path: string) {
-    await ccd().sessionNew(path)
+    const result = await ccd().sessionNew(path)
     setSessionReady(true)
+    setActiveSessionId(result.sessionId)
     setItems([])
     setStreaming('')
+    await refreshSessions(path)
   }
 
   async function openProject() {
@@ -89,6 +110,46 @@ export function App() {
     }
   }
 
+  async function attachFiles() {
+    try {
+      const refs = await ccd().filesPick()
+      setAttachments((prev) => [...prev, ...refs])
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function onDropFiles(paths: string[]) {
+    try {
+      const refs = await ccd().filesStagePaths(paths)
+      setAttachments((prev) => [...prev, ...refs])
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function resume(sessionId: string) {
+    if (!projectPath) return
+    await ccd().sessionResume(projectPath, sessionId)
+    setActiveSessionId(sessionId)
+    setSessionReady(true)
+    setItems([
+      {
+        id: crypto.randomUUID(),
+        role: 'system',
+        text: `Resumed session ${sessionId.slice(0, 8)}…`,
+      },
+    ])
+    setStreaming('')
+  }
+
+  async function changePermissionMode(mode: typeof permissionMode) {
+    setPermissionMode(mode)
+    await ccd().settingsSet({ permissionMode: mode })
+  }
+
   if (!cli) {
     return <main className="app-shell">Loading…</main>
   }
@@ -106,34 +167,87 @@ export function App() {
   }
 
   return (
-    <div className="layout">
-      <ProjectBar projectPath={projectPath} onOpen={() => void openProject()} />
-      <main className="chat-main">
-        {!projectPath ? (
-          <div className="empty">
-            <p>Open a project folder to start chatting with Claude Code.</p>
-            <button type="button" onClick={() => void openProject()}>
-              Open folder
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="cli-meta muted">
-              Using {cli.path} · {cli.version}
+    <div className="layout with-sidebar">
+      {projectPath ? (
+        <SessionSidebar
+          sessions={sessions}
+          activeId={activeSessionId}
+          onNew={() => void ensureSession(projectPath)}
+          onSelect={(id) => void resume(id)}
+        />
+      ) : (
+        <aside className="session-sidebar" />
+      )}
+      <div className="main-column">
+        <ProjectBar projectPath={projectPath} onOpen={() => void openProject()} />
+        <main
+          className="chat-main"
+          onDragOver={(e) => {
+            e.preventDefault()
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const paths = Array.from(e.dataTransfer.files)
+              .map((f) => (f as File & { path?: string }).path)
+              .filter((p): p is string => Boolean(p))
+            if (paths.length) void onDropFiles(paths)
+          }}
+        >
+          {!projectPath ? (
+            <div className="empty">
+              <p>Open a project folder to start chatting with Claude Code.</p>
+              <button type="button" onClick={() => void openProject()}>
+                Open folder
+              </button>
             </div>
-            {error ? <div className="error-banner">{error}</div> : null}
-            <ChatTranscript items={items} streaming={streaming} />
-            <Composer
-              attachments={attachments}
-              onRemoveAttachment={(p) => setAttachments((prev) => prev.filter((a) => a.path !== p))}
-              onAttach={() => setError('Attachments arrive in the next step — use Open folder chat for now.')}
-              onSend={(t) => void send(t)}
-              onStop={() => void ccd().chatStop()}
-              busy={busy}
-            />
-          </>
-        )}
-      </main>
+          ) : (
+            <>
+              <div className="cli-meta muted">
+                Using {cli.path} · {cli.version}
+                <label className="perm-mode">
+                  Permission mode
+                  <select
+                    value={permissionMode}
+                    onChange={(e) =>
+                      void changePermissionMode(
+                        e.target.value as typeof permissionMode,
+                      )
+                    }
+                  >
+                    <option value="default">default</option>
+                    <option value="acceptEdits">acceptEdits</option>
+                    <option value="plan">plan</option>
+                    <option value="bypassPermissions">bypassPermissions</option>
+                  </select>
+                </label>
+              </div>
+              {error ? <div className="error-banner">{error}</div> : null}
+              <ChatTranscript items={items} streaming={streaming} />
+              <Composer
+                disabled={!!permission}
+                attachments={attachments}
+                onRemoveAttachment={(p) =>
+                  setAttachments((prev) => prev.filter((a) => a.path !== p))
+                }
+                onAttach={() => void attachFiles()}
+                onSend={(t) => void send(t)}
+                onStop={() => void ccd().chatStop()}
+                busy={busy}
+              />
+            </>
+          )}
+        </main>
+      </div>
+      {permission?.type === 'permission_request' ? (
+        <PermissionModal
+          request={permission}
+          onDecide={(decision) => {
+            const requestId = permission.requestId ?? ''
+            void ccd().chatRespondPermission({ requestId, decision })
+            setPermission(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

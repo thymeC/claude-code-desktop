@@ -1,0 +1,21 @@
+appId: com.claude-code-desktop.app
+productName: Claude Code Desktop
+files:
+  - dist/**/*
+  - dist-electron/**/*
+directories:
+  output: release
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+win:
+  target:
+    - nsis
+    - zip
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
