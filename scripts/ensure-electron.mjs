@@ -36,9 +36,11 @@ const result = spawnSync(process.execPath, [installJs], {
 
 if (result.status !== 0 || !existsSync(pathTxt)) {
   console.error(
-    '[ensure-electron] Download failed. Try:\n' +
-      '  ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" npm install\n' +
-      '  or: cd node_modules/electron && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" node install.js',
+    '[ensure-electron] Download failed. Retry with mirror:\n' +
+      '  macOS/Linux: ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" npm install\n' +
+      '  Windows CMD: set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && npm install\n' +
+      '  Windows PS:  $env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"; npm install\n' +
+      '  or: node node_modules/electron/install.js  (with ELECTRON_MIRROR set)',
   )
   process.exit(result.status || 1)
 }

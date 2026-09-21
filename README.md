@@ -7,14 +7,17 @@ Local desktop GUI shell around the [Claude Code](https://code.claude.com/docs/en
 - Node.js 22.12+ (Electron 44 / this repo’s `engines.node`; Node 18 will spam `EBADENGINE` and Vite will crash)
 - Claude Code CLI installed and logged in (`claude` on your PATH)
 
-If Electron fails to download (GitHub timeouts / `Electron failed to install correctly`), the `postinstall` script retries via npmmirror. You can also force it:
+If Electron fails to download (GitHub timeouts / `Electron failed to install correctly`), `postinstall` retries via npmmirror. You can also force it:
 
 ```bash
 # macOS / Linux
 ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" npm install
 
-# or only re-download the binary
-cd node_modules/electron && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" node install.js
+# Windows CMD
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && npm install
+
+# Windows PowerShell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"; npm install
 ```
 
 ## Develop
@@ -41,16 +44,25 @@ npm run pack
 Then open:
 
 ```bash
+# macOS
 open "release/mac-arm64/Claude Code Desktop.app"
+
+# Windows
+start "" "release\win-unpacked\Claude Code Desktop.exe"
 ```
 
-Full installers (DMG + zip on macOS):
+Full installers (run on the target OS — macOS → DMG/zip, Windows → NSIS/zip):
 
 ```bash
 npm run dist
 ```
 
-Artifacts land in `release/` (e.g. `Claude Code Desktop-0.3.0-arm64.dmg`).
+`npm run dist` / `pack` use a cross-platform Node launcher that sets Electron + electron-builder binary mirrors and disables code-signing discovery (so the same command works in CMD, PowerShell, and zsh).
+
+Artifacts land in `release/`:
+
+- macOS: `Claude Code Desktop-0.3.0-arm64.dmg`, `…-mac.zip`
+- Windows: `Claude Code Desktop-0.3.0-x64.exe` (NSIS), `…-x64.zip`
 
 After pulling new changes, a typical rebuild is:
 

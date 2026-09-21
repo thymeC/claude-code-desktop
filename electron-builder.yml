@@ -5,16 +5,33 @@ files:
   - dist-electron/**/*
 directories:
   output: release
+# Prefer npmmirror when GitHub is unreachable (CN / flaky networks)
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+# Local releases are unsigned
+forceCodeSigning: false
 mac:
   target:
     - dmg
     - zip
   category: public.app-category.developer-tools
+  # Skip keychain identity discovery (can hang on macOS)
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
 win:
+  # Skip Authenticode / signtool (avoids Windows signing tooling downloads)
   signAndEditExecutable: false
+  verifyUpdateCodeSignature: false
   target:
     - nsis
     - zip
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
 linux:
   target:
     - AppImage
