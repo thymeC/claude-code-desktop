@@ -46,7 +46,7 @@ Full installers (DMG + zip on macOS):
 npm run dist
 ```
 
-Artifacts land in `release/` (e.g. `Claude Code Desktop-0.1.0-arm64.dmg`).
+Artifacts land in `release/` (e.g. `Claude Code Desktop-0.2.0-arm64.dmg`).
 
 After pulling new changes, a typical rebuild is:
 

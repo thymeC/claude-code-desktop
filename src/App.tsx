@@ -12,6 +12,7 @@ import { SettingsPanel } from './components/SettingsPanel'
 import {
   defaultModelCatalog,
   enabledModels,
+  ensureSavedModelInCatalog,
   mergeModelCatalog,
   resolveEnabledSelection,
   type ModelEntry,
@@ -232,11 +233,15 @@ export function App() {
     const provider = auth.provider
     void ccd()
       .settingsGet()
-      .then((s) => {
-        const catalog = mergeModelCatalog(s.modelCatalog)
-        setModelCatalog(catalog)
+      .then(async (s) => {
         const raw = provider === 'openai' ? (auth.openaiModel ?? s.openaiModel) : s.claudeModel
+        const merged = mergeModelCatalog(s.modelCatalog)
+        const catalog = ensureSavedModelInCatalog(merged, provider, raw)
+        setModelCatalog(catalog)
         setSelectedModel(resolveEnabledSelection(catalog, provider, raw))
+        if (catalog !== merged) {
+          await ccd().settingsSet({ modelCatalog: catalog })
+        }
       })
   }, [auth?.provider, auth?.openaiModel])
 
@@ -256,18 +261,19 @@ export function App() {
       if (typeof settings.fontSize === 'number') {
         setFontSize(Math.min(18, Math.max(12, settings.fontSize)))
       }
-      const catalog = mergeModelCatalog(settings.modelCatalog)
-      setModelCatalog(catalog)
       if (authStatus.provider === 'openai') {
-        setSelectedModel(
-          resolveEnabledSelection(
-            catalog,
-            'openai',
-            authStatus.openaiModel ?? settings.openaiModel,
-          ),
-        )
+        const raw = authStatus.openaiModel ?? settings.openaiModel
+        const merged = mergeModelCatalog(settings.modelCatalog)
+        const catalog = ensureSavedModelInCatalog(merged, 'openai', raw)
+        setModelCatalog(catalog)
+        setSelectedModel(resolveEnabledSelection(catalog, 'openai', raw))
+        if (catalog !== merged) await ccd().settingsSet({ modelCatalog: catalog })
       } else {
+        const merged = mergeModelCatalog(settings.modelCatalog)
+        const catalog = ensureSavedModelInCatalog(merged, 'claude', settings.claudeModel)
+        setModelCatalog(catalog)
         setSelectedModel(resolveEnabledSelection(catalog, 'claude', settings.claudeModel))
+        if (catalog !== merged) await ccd().settingsSet({ modelCatalog: catalog })
       }
       const canUseApp =
         authStatus.authenticated && (authStatus.provider === 'openai' || status.found)

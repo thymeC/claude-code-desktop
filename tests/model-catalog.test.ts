@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   defaultModelCatalog,
+  displayModelLabel,
+  enabledModels,
+  ensureSavedModelInCatalog,
   mergeModelCatalog,
+  resolveEnabledSelection,
   syncRemoteModels,
 } from '../src/lib/models'
 
@@ -51,5 +55,36 @@ describe('syncRemoteModels', () => {
     expect(synced.some((m) => m.id === 'kimi-k2.6')).toBe(true)
     expect(synced.some((m) => m.id === 'gpt-5.6-luna' && m.fromApi)).toBe(true)
     expect(synced.some((m) => m.id === 'gpt-4o')).toBe(false)
+  })
+})
+
+describe('claude catalog', () => {
+  it('keeps Claude builtins after OpenAI API sync', () => {
+    const synced = syncRemoteModels(defaultModelCatalog(), 'openai', [
+      { id: 'gpt-5.6-luna' },
+      { id: 'kimi-k2.6' },
+    ])
+    const claude = enabledModels(synced, 'claude').map((m) => m.id)
+    expect(claude).toEqual(['', 'sonnet', 'opus', 'haiku'])
+  })
+
+  it('resolves Default (empty id) and aliases for Claude', () => {
+    const catalog = defaultModelCatalog()
+    expect(resolveEnabledSelection(catalog, 'claude', undefined)).toBe('')
+    expect(resolveEnabledSelection(catalog, 'claude', '')).toBe('')
+    expect(resolveEnabledSelection(catalog, 'claude', 'sonnet')).toBe('sonnet')
+    expect(displayModelLabel(catalog, 'claude', '')).toBe('Default')
+    expect(displayModelLabel(catalog, 'claude', 'opus')).toBe('Opus')
+  })
+
+  it('adds a saved Claude model missing from the catalog so picker matches CLI', () => {
+    const catalog = defaultModelCatalog()
+    expect(resolveEnabledSelection(catalog, 'claude', 'claude-opus-5')).toBe('')
+
+    const ensured = ensureSavedModelInCatalog(catalog, 'claude', 'claude-opus-5')
+    expect(
+      ensured.some((m) => m.provider === 'claude' && m.id === 'claude-opus-5' && m.enabled),
+    ).toBe(true)
+    expect(resolveEnabledSelection(ensured, 'claude', 'claude-opus-5')).toBe('claude-opus-5')
   })
 })

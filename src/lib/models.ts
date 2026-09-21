@@ -133,7 +133,13 @@ export function upsertCustomModel(
   const trimmed = id.trim()
   if (!trimmed && provider === 'openai') return catalog
   const keyId = trimmed
-  const next = catalog.filter((m) => !(m.provider === provider && m.id === keyId))
+  const existing = catalog.find((m) => m.provider === provider && m.id === keyId)
+  if (existing) {
+    return catalog.map((m) =>
+      m.provider === provider && m.id === keyId ? { ...m, enabled: true } : m,
+    )
+  }
+  const next = [...catalog]
   next.push({
     id: keyId,
     label: (label ?? trimmed) || 'Default',
@@ -145,9 +151,32 @@ export function upsertCustomModel(
 }
 
 /**
+ * If a saved selection isn't in the catalog (e.g. claude-opus-5), add it as an
+ * enabled custom entry so the picker and CLI stay in sync.
+ */
+export function ensureSavedModelInCatalog(
+  catalog: ModelEntry[],
+  provider: ChatProvider,
+  selected: string | undefined,
+): ModelEntry[] {
+  const id = selected?.trim() ?? ''
+  if (!id) return catalog
+  const hit = catalog.find((m) => m.provider === provider && m.id === id)
+  if (hit?.enabled) return catalog
+  if (hit) {
+    return catalog.map((m) =>
+      m.provider === provider && m.id === id ? { ...m, enabled: true } : m,
+    )
+  }
+  return upsertCustomModel(catalog, provider, id)
+}
+
+/**
  * Replace models for `provider` whose ids match `idPrefix` with the live /models
  * list. Built-ins not returned by the API (e.g. gpt-4o on a custom gateway) are
  * dropped so the catalog matches what the server actually supports.
+ * With no prefix, replaces the entire provider list (Claude entries are untouched
+ * when syncing OpenAI).
  */
 export function syncRemoteModels(
   catalog: ModelEntry[],
