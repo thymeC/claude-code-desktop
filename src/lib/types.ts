@@ -71,4 +71,12 @@ export interface AppSettings {
   openaiModel?: string
   /** Claude Code CLI --model (empty = CLI default) */
   claudeModel?: string
+  modelCatalog?: Array<{
+    id: string
+    label: string
+    provider: ChatProvider
+    enabled: boolean
+    custom?: boolean
+    fromApi?: boolean
+  }>
 }

@@ -758,7 +758,7 @@ button {
   right: 0;
   bottom: calc(100% + 0.35rem);
   min-width: 11rem;
-  max-width: 16rem;
+  max-width: 18rem;
   padding: 0.35rem;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -768,6 +768,19 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+}
+
+.model-menu-note {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.45rem 0.35rem;
+}
+
+.model-menu-scroll {
+  max-height: 14rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
 .model-option {
@@ -786,12 +799,51 @@ button {
   background: color-mix(in srgb, var(--accent, #d97757) 12%, white);
 }
 
+.model-catalog-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.model-catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.25rem 0.15rem;
+  border-radius: 6px;
+}
+
+.model-catalog-row:hover {
+  background: color-mix(in srgb, var(--panel, #f3f1ee) 70%, #eee);
+}
+
+.model-catalog-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-catalog-name {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 550;
+}
+
+.model-catalog-id {
+  display: block;
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .model-custom-row {
   display: flex;
   gap: 0.35rem;
-  padding: 0.35rem 0.25rem 0.2rem;
-  border-top: 1px solid var(--border);
-  margin-top: 0.2rem;
+  align-items: center;
 }
 
 .model-custom-row input {

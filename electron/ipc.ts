@@ -29,6 +29,7 @@ import {
   saveApiKey,
   saveOpenAiKey,
 } from './bridge/auth'
+import { fetchOpenAiModels } from './bridge/openai-models'
 import type { AttachmentRef, PermissionDecision } from './bridge/types'
 import { SCHEMA_VERSION } from './bridge/types'
 
@@ -152,6 +153,24 @@ export function registerIpc() {
   })
 
   ipcMain.handle('auth:status', async () => getAuthStatus())
+
+  ipcMain.handle('openai:listModels', async (_e, opts?: { idPrefix?: string }) => {
+    const settings = loadSettings()
+    const apiKey = resolveOpenAiKey()
+    const baseUrl = (settings.openaiBaseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '')
+    if (!apiKey) {
+      return { ok: false as const, models: null, error: 'No OpenAI API key configured.' }
+    }
+    const result = await fetchOpenAiModels({
+      baseUrl,
+      apiKey,
+      idPrefix: opts?.idPrefix,
+    })
+    if (!result.ok) {
+      return { ok: false as const, models: null, error: result.error }
+    }
+    return { ok: true as const, models: result.models, error: null }
+  })
 
   ipcMain.handle('auth:setApiKey', async (_e, apiKey: string) => {
     saveApiKey(apiKey)

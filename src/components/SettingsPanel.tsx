@@ -1,11 +1,21 @@
-import { OPENAI_MODEL_OPTIONS } from '../lib/models'
 import { useEffect, useState } from 'react'
+import { ccd } from '../lib/ipc'
 import type { AuthStatus, ChatProvider } from '../lib/types'
+import {
+  enabledModels,
+  mergeModelCatalog,
+  modelsForProvider,
+  syncRemoteModels,
+  upsertCustomModel,
+  type ModelEntry,
+} from '../lib/models'
 
 interface Props {
   fontSize: number
   onFontSizeChange: (size: number) => void
   auth: AuthStatus
+  modelCatalog: ModelEntry[]
+  onModelCatalogChange: (catalog: ModelEntry[]) => Promise<void>
   onSaveClaudeKey: (apiKey: string) => Promise<void>
   onSaveOpenAi: (payload: { apiKey?: string; baseUrl: string; model: string }) => Promise<void>
   onSwitchProvider: (provider: ChatProvider) => Promise<void>
@@ -21,6 +31,8 @@ export function SettingsPanel({
   fontSize,
   onFontSizeChange,
   auth,
+  modelCatalog,
+  onModelCatalogChange,
   onSaveClaudeKey,
   onSaveOpenAi,
   onSwitchProvider,
@@ -30,17 +42,20 @@ export function SettingsPanel({
 }: Props) {
   const [openaiEnabled, setOpenaiEnabled] = useState(auth.provider === 'openai')
   const [baseUrl, setBaseUrl] = useState(auth.openaiBaseUrl ?? 'https://api.openai.com/v1')
-  const [model, setModel] = useState(auth.openaiModel ?? 'gpt-4o-mini')
   const [openaiKey, setOpenaiKey] = useState('')
   const [claudeKey, setClaudeKey] = useState('')
+  const [customId, setCustomId] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const catalog = mergeModelCatalog(modelCatalog)
+  const provider: ChatProvider = openaiEnabled ? 'openai' : 'claude'
+  const providerModels = modelsForProvider(catalog, provider)
+
   useEffect(() => {
     setOpenaiEnabled(auth.provider === 'openai')
     setBaseUrl(auth.openaiBaseUrl ?? 'https://api.openai.com/v1')
-    setModel(auth.openaiModel ?? 'gpt-4o-mini')
   }, [auth])
 
   async function run(action: () => Promise<void>, ok: string) {
@@ -55,6 +70,43 @@ export function SettingsPanel({
     } finally {
       setBusy(false)
     }
+  }
+
+  async function toggleModel(id: string, enabled: boolean) {
+    const next = catalog.map((m) =>
+      m.provider === provider && m.id === id ? { ...m, enabled } : m,
+    )
+    await onModelCatalogChange(next)
+  }
+
+  async function removeCustom(id: string) {
+    const next = catalog.filter((m) => !(m.provider === provider && m.id === id && m.custom))
+    await onModelCatalogChange(next)
+  }
+
+  async function addCustom() {
+    const id = customId.trim()
+    if (!id) {
+      setError('Enter a model id.')
+      return
+    }
+    const next = upsertCustomModel(catalog, provider, id)
+    await onModelCatalogChange(next)
+    setCustomId('')
+    setMessage(`Added ${id}.`)
+    setError(null)
+  }
+
+  async function refreshFromApi() {
+    await run(async () => {
+      const res = await ccd().openaiListModels()
+      if (!res.ok || !res.models?.length) {
+        throw new Error(res.error ?? 'Failed to fetch models')
+      }
+      // Replace OpenAI catalog with the live /models list
+      const next = syncRemoteModels(catalog, 'openai', res.models)
+      await onModelCatalogChange(next)
+    }, 'Synced models from API.')
   }
 
   return (
@@ -141,41 +193,6 @@ export function SettingsPanel({
               placeholder="https://api.openai.com/v1"
               disabled={busy}
             />
-            <label className="field-label" htmlFor="settings-model">
-              Model
-            </label>
-            <select
-              id="settings-model"
-              value={OPENAI_MODEL_OPTIONS.some((m) => m.id === model) ? model : '__custom__'}
-              onChange={(e) => {
-                if (e.target.value === '__custom__') {
-                  setModel((prev) =>
-                    OPENAI_MODEL_OPTIONS.some((m) => m.id === prev) ? '' : prev,
-                  )
-                } else {
-                  setModel(e.target.value)
-                }
-              }}
-              disabled={busy}
-            >
-              {OPENAI_MODEL_OPTIONS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-              <option value="__custom__">Custom…</option>
-            </select>
-            {!OPENAI_MODEL_OPTIONS.some((m) => m.id === model) ? (
-              <input
-                type="text"
-                spellCheck={false}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="custom-model-id"
-                disabled={busy}
-                style={{ marginTop: '0.35rem' }}
-              />
-            ) : null}
             <label className="field-label" htmlFor="settings-openai-key">
               API key
               {auth.provider === 'openai' && auth.hasStoredKey ? ' (saved — leave blank to keep)' : ''}
@@ -197,10 +214,16 @@ export function SettingsPanel({
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
+                    const enabled = enabledModels(catalog, 'openai')
+                    const current = auth.openaiModel?.trim() || 'gpt-4o-mini'
+                    const model =
+                      enabled.find((m) => m.id === current)?.id ||
+                      enabled[0]?.id ||
+                      'gpt-4o-mini'
                     await onSaveOpenAi({
                       apiKey: openaiKey.trim() || undefined,
                       baseUrl: baseUrl.trim().replace(/\/$/, ''),
-                      model: model.trim() || 'gpt-4o-mini',
+                      model,
                     })
                     setOpenaiKey('')
                   }, 'OpenAI settings saved.')
@@ -268,6 +291,82 @@ export function SettingsPanel({
             </div>
           </div>
         )}
+
+        <hr className="settings-divider" />
+
+        <div className="settings-row">
+          <div className="settings-label">Models</div>
+          <div className="muted settings-hint">
+            Enable models for {provider === 'openai' ? 'OpenAI' : 'Claude'}. Only enabled models appear
+            in the chat picker.
+            {provider === 'openai'
+              ? ' Refresh replaces the OpenAI list with your gateway’s real /models response.'
+              : ''}
+          </div>
+          {provider === 'openai' ? (
+            <div className="row settings-actions" style={{ marginTop: '0.35rem' }}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => void refreshFromApi()}
+              >
+                {busy ? 'Refreshing…' : 'Refresh from API'}
+              </button>
+            </div>
+          ) : null}
+          <ul className="model-catalog-list">
+            {providerModels.map((m) => (
+              <li key={`${m.provider}-${m.id || 'default'}`} className="model-catalog-row">
+                <label className="toggle-row model-catalog-toggle">
+                  <input
+                    type="checkbox"
+                    checked={m.enabled}
+                    disabled={busy}
+                    onChange={(e) => void toggleModel(m.id, e.target.checked)}
+                  />
+                  <span>
+                    <span className="model-catalog-name">
+                      {m.label}
+                      {m.fromApi ? <span className="muted"> · api</span> : null}
+                    </span>
+                    {m.id ? <span className="muted model-catalog-id">{m.id}</span> : null}
+                  </span>
+                </label>
+                {m.custom ? (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Remove"
+                    disabled={busy}
+                    onClick={() => void removeCustom(m.id)}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <div className="model-custom-row" style={{ marginTop: '0.5rem' }}>
+            <input
+              type="text"
+              spellCheck={false}
+              value={customId}
+              onChange={(e) => setCustomId(e.target.value)}
+              placeholder="Add custom model id"
+              disabled={busy}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void addCustom()
+                }
+              }}
+            />
+            <button type="button" className="secondary" disabled={busy} onClick={() => void addCustom()}>
+              Add
+            </button>
+          </div>
+        </div>
 
         {error ? <p className="field-error">{error}</p> : null}
         {message ? <p className="settings-ok">{message}</p> : null}

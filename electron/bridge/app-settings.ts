@@ -17,6 +17,15 @@ export interface AppSettings {
   openaiModel?: string
   /** Claude Code CLI --model (empty = CLI default) */
   claudeModel?: string
+  /** User catalog: enable/disable + custom models (Cursor-style) */
+  modelCatalog?: Array<{
+    id: string
+    label: string
+    provider: 'claude' | 'openai'
+    enabled: boolean
+    custom?: boolean
+    fromApi?: boolean
+  }>
 }
 
 const MAX_RECENT_PROJECTS = 20

@@ -9,6 +9,13 @@ import { LeftNav } from './components/LeftNav'
 import { RightPanel } from './components/RightPanel'
 import { PermissionModal } from './components/PermissionModal'
 import { SettingsPanel } from './components/SettingsPanel'
+import {
+  defaultModelCatalog,
+  enabledModels,
+  mergeModelCatalog,
+  resolveEnabledSelection,
+  type ModelEntry,
+} from './lib/models'
 
 const DEFAULT_FONT_SIZE = 14
 
@@ -44,6 +51,7 @@ export function App() {
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE)
   const [projects, setProjects] = useState<string[]>([])
   const [selectedModel, setSelectedModel] = useState('')
+  const [modelCatalog, setModelCatalog] = useState<ModelEntry[]>(defaultModelCatalog())
 
   const uiCacheRef = useRef(new Map<string, SessionUiState>())
   const viewedSessionRef = useRef<string | null>(null)
@@ -221,10 +229,16 @@ export function App() {
 
   useEffect(() => {
     if (!auth) return
-    if (auth.provider === 'openai') {
-      setSelectedModel(auth.openaiModel ?? 'gpt-4o-mini')
-    }
-  }, [auth])
+    const provider = auth.provider
+    void ccd()
+      .settingsGet()
+      .then((s) => {
+        const catalog = mergeModelCatalog(s.modelCatalog)
+        setModelCatalog(catalog)
+        const raw = provider === 'openai' ? (auth.openaiModel ?? s.openaiModel) : s.claudeModel
+        setSelectedModel(resolveEnabledSelection(catalog, provider, raw))
+      })
+  }, [auth?.provider, auth?.openaiModel])
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font-size', `${fontSize}px`)
@@ -242,10 +256,18 @@ export function App() {
       if (typeof settings.fontSize === 'number') {
         setFontSize(Math.min(18, Math.max(12, settings.fontSize)))
       }
+      const catalog = mergeModelCatalog(settings.modelCatalog)
+      setModelCatalog(catalog)
       if (authStatus.provider === 'openai') {
-        setSelectedModel(authStatus.openaiModel ?? settings.openaiModel ?? 'gpt-4o-mini')
+        setSelectedModel(
+          resolveEnabledSelection(
+            catalog,
+            'openai',
+            authStatus.openaiModel ?? settings.openaiModel,
+          ),
+        )
       } else {
-        setSelectedModel(settings.claudeModel ?? '')
+        setSelectedModel(resolveEnabledSelection(catalog, 'claude', settings.claudeModel))
       }
       const canUseApp =
         authStatus.authenticated && (authStatus.provider === 'openai' || status.found)
@@ -396,14 +418,42 @@ export function App() {
   }
 
   async function changeModel(model: string) {
-    setSelectedModel(model)
-    if (auth?.provider === 'openai') {
-      await ccd().settingsSet({ openaiModel: model.trim() || 'gpt-4o-mini' })
+    if (!auth) return
+    const next = resolveEnabledSelection(modelCatalog, auth.provider, model)
+    setSelectedModel(next)
+    if (auth.provider === 'openai') {
+      await ccd().settingsSet({ openaiModel: next.trim() || 'gpt-4o-mini' })
       setAuth(await ccd().authStatus())
     } else {
       await ccd().settingsSet({
-        claudeModel: model.trim() ? model.trim() : undefined,
+        claudeModel: next.trim() ? next.trim() : undefined,
       })
+      // Claude CLI reads --model at process start; restart so selection applies
+      if (sessionReady && projectPath) {
+        const sid = activeSessionId
+        try {
+          await ccd().chatStop()
+        } catch {
+          // ignore
+        }
+        if (sid) await ccd().sessionResume(projectPath, sid)
+        else await ccd().sessionNew(projectPath)
+        setSessionReady(true)
+      }
+    }
+  }
+
+  async function changeModelCatalog(catalog: ModelEntry[]) {
+    const merged = mergeModelCatalog(catalog)
+    setModelCatalog(merged)
+    await ccd().settingsSet({ modelCatalog: merged })
+    if (auth) {
+      const next = resolveEnabledSelection(
+        merged,
+        auth.provider,
+        selectedModel,
+      )
+      if (next !== selectedModel) await changeModel(next)
     }
   }
 
@@ -699,6 +749,8 @@ export function App() {
                 attachments={attachments}
                 provider={auth.provider}
                 model={selectedModel}
+                modelCatalog={modelCatalog}
+                enabledOptions={enabledModels(modelCatalog, auth.provider)}
                 onModelChange={(m) => void changeModel(m)}
                 onRemoveAttachment={(p) => setAttachments((prev) => prev.filter((a) => a.path !== p))}
                 onAttachFile={() =>
@@ -747,6 +799,10 @@ export function App() {
           fontSize={fontSize}
           onFontSizeChange={(size) => void changeFontSize(size)}
           auth={auth}
+          modelCatalog={modelCatalog}
+          onModelCatalogChange={async (catalog) => {
+            await changeModelCatalog(catalog)
+          }}
           onSaveClaudeKey={async (apiKey) => {
             const next = await ccd().authSetApiKey(apiKey)
             setAuth(next)

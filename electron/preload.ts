@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('ccd', {
   authClearOpenAi: () => ipcRenderer.invoke('auth:clearOpenAi'),
   authSetProvider: (provider: 'claude' | 'openai') =>
     ipcRenderer.invoke('auth:setProvider', provider),
+  openaiListModels: (opts?: { idPrefix?: string }) =>
+    ipcRenderer.invoke('openai:listModels', opts),
   onChatEvent: (cb: (event: unknown) => void) => {
     const listener = (_: unknown, event: unknown) => cb(event)
     ipcRenderer.on('chat:event', listener)

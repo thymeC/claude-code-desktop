@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { AttachmentRef, ChatProvider } from '../lib/types'
-import {
-  CUSTOM_MODEL_ID,
-  displayModelLabel,
-  modelsForProvider,
-} from '../lib/models'
+import { displayModelLabel, type ModelEntry, type ModelOption } from '../lib/models'
 
 interface Props {
   disabled?: boolean
   attachments: AttachmentRef[]
   provider: ChatProvider
   model: string
+  modelCatalog: ModelEntry[]
+  enabledOptions: ModelOption[]
   onModelChange: (model: string) => void
   onRemoveAttachment: (path: string) => void
   onAttachFile: () => void
@@ -26,6 +24,8 @@ export function Composer({
   attachments,
   provider,
   model,
+  modelCatalog,
+  enabledOptions,
   onModelChange,
   onRemoveAttachment,
   onAttachFile,
@@ -37,13 +37,9 @@ export function Composer({
 }: Props) {
   const [text, setText] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [customMode, setCustomMode] = useState(false)
-  const [customDraft, setCustomDraft] = useState('')
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const options = modelsForProvider(provider)
-  const known = options.some((o) => o.id === model)
-  const label = displayModelLabel(provider, model)
+  const label = displayModelLabel(modelCatalog, provider, model)
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -66,25 +62,6 @@ export function Composer({
       e.preventDefault()
       submit()
     }
-  }
-
-  function pick(id: string) {
-    if (id === CUSTOM_MODEL_ID) {
-      setCustomMode(true)
-      setCustomDraft(known ? '' : model)
-      return
-    }
-    setCustomMode(false)
-    setMenuOpen(false)
-    onModelChange(id)
-  }
-
-  function applyCustom() {
-    const next = customDraft.trim()
-    if (!next && provider === 'openai') return
-    onModelChange(next)
-    setCustomMode(false)
-    setMenuOpen(false)
   }
 
   return (
@@ -141,7 +118,7 @@ export function Composer({
               type="button"
               className="model-picker-btn"
               title="Select model"
-              disabled={disabled}
+              disabled={disabled || enabledOptions.length === 0}
               aria-expanded={menuOpen}
               aria-haspopup="listbox"
               onClick={() => setMenuOpen((v) => !v)}
@@ -153,47 +130,31 @@ export function Composer({
             </button>
             {menuOpen ? (
               <div className="model-menu" role="listbox">
-                {options.map((opt) => (
-                  <button
-                    key={opt.id || 'default'}
-                    type="button"
-                    role="option"
-                    className={
-                      (!model && !opt.id) || model === opt.id ? 'model-option active' : 'model-option'
-                    }
-                    aria-selected={(!model && !opt.id) || model === opt.id}
-                    onClick={() => pick(opt.id)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={!known && model ? 'model-option active' : 'model-option'}
-                  onClick={() => pick(CUSTOM_MODEL_ID)}
-                >
-                  Custom…
-                </button>
-                {customMode ? (
-                  <div className="model-custom-row">
-                    <input
-                      autoFocus
-                      spellCheck={false}
-                      placeholder={provider === 'openai' ? 'model-id' : 'sonnet / model-id'}
-                      value={customDraft}
-                      onChange={(e) => setCustomDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          applyCustom()
+                {enabledOptions.length === 0 ? (
+                  <div className="model-menu-note muted">Enable models in Settings</div>
+                ) : (
+                  <div className="model-menu-scroll">
+                    {enabledOptions.map((opt) => (
+                      <button
+                        key={opt.id || 'default'}
+                        type="button"
+                        role="option"
+                        className={
+                          (!model && !opt.id) || model === opt.id
+                            ? 'model-option active'
+                            : 'model-option'
                         }
-                      }}
-                    />
-                    <button type="button" className="secondary" onClick={applyCustom}>
-                      Use
-                    </button>
+                        aria-selected={(!model && !opt.id) || model === opt.id}
+                        onClick={() => {
+                          onModelChange(opt.id)
+                          setMenuOpen(false)
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
-                ) : null}
+                )}
               </div>
             ) : null}
           </div>

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AttachmentRef, ChatEvent } from './types'
 import { SCHEMA_VERSION } from './types'
+import { formatFetchError, httpFetch } from './http-fetch'
 import {
   OPENAI_PROJECT_TOOLS,
   buildProjectTree,
@@ -289,7 +290,7 @@ export class OpenAiChat {
 
     let res: Response
     try {
-      res = await fetch(url, {
+      res = await httpFetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -308,7 +309,7 @@ export class OpenAiChat {
       if ((e as Error).name === 'AbortError') throw e
       this.emit({
         type: 'error',
-        error: e instanceof Error ? e.message : String(e),
+        error: formatFetchError(e, url),
       })
       return null
     }
@@ -336,19 +337,29 @@ export class OpenAiChat {
     if (!this.opts) return null
     const base = this.opts.baseUrl.replace(/\/$/, '')
     const url = `${base}/chat/completions`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.opts.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.opts.model,
-        messages: this.messages.filter((m) => m.role !== 'tool' && !m.tool_calls),
-        stream: true,
-      }),
-      signal: this.abort?.signal,
-    })
+    let res: Response
+    try {
+      res = await httpFetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.opts.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.opts.model,
+          messages: this.messages.filter((m) => m.role !== 'tool' && !m.tool_calls),
+          stream: true,
+        }),
+        signal: this.abort?.signal,
+      })
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') throw e
+      this.emit({
+        type: 'error',
+        error: formatFetchError(e, url),
+      })
+      return null
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       this.emit({
@@ -425,7 +436,7 @@ export class OpenAiChat {
       if ((e as Error).name === 'AbortError') throw e
       this.emit({
         type: 'error',
-        error: e instanceof Error ? e.message : String(e),
+        error: formatFetchError(e, 'stream'),
       })
       return null
     }
