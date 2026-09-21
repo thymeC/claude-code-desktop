@@ -1,12 +1,17 @@
 {
   "name": "claude-code-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Local desktop GUI shell for Claude Code",
+  "author": {
+    "name": "skyler",
+    "email": "blingbling_cj@163.com",
+    "url": "https://github.com/thymeC"
+  },
   "main": "dist-electron/main.js",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "vite",
@@ -14,8 +19,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pack": "npm run build && electron-builder --config electron-builder.yml --dir",
-    "dist": "npm run build && electron-builder --config electron-builder.yml"
+    "postinstall": "node scripts/ensure-electron.mjs",
+    "pack": "CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && electron-builder --config electron-builder.yml --dir",
+    "dist": "CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && electron-builder --config electron-builder.yml"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -28,13 +34,13 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.0",
+    "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vite-plugin-electron": "^0.28.8",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.1"
   },
   "overrides": {
     "brace-expansion": "2.1.7"

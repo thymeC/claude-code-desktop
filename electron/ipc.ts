@@ -417,19 +417,23 @@ export function registerIpc() {
   })
 
   ipcMain.handle('files:pasteImage', async () => {
-    const image = clipboard.readImage()
-    if (image.isEmpty()) {
-      throw new Error('No image on clipboard. Copy an image first, then paste.')
+    const items = await clipboard.read()
+    for (const item of items) {
+      const imageType = item.types.find((t) => t.startsWith('image/'))
+      if (!imageType) continue
+      const blob = (await item.getType(imageType)) as Blob
+      const buf = Buffer.from(await blob.arrayBuffer())
+      const ext = imageType.includes('jpeg') || imageType.includes('jpg') ? 'jpg' : 'png'
+      return stageImageBuffer(buf, stagingDir(), {
+        name: `clipboard-${Date.now()}.${ext}`,
+        mimeType: imageType,
+      })
     }
-    const png = image.toPNG()
-    return stageImageBuffer(Buffer.from(png), stagingDir(), {
-      name: `clipboard-${Date.now()}.png`,
-      mimeType: 'image/png',
-    })
+    throw new Error('No image on clipboard. Copy an image first, then paste.')
   })
 
   ipcMain.handle('clipboard:writeText', async (_e, text: string) => {
-    clipboard.writeText(text)
+    await clipboard.writeText(text)
     return true
   })
 

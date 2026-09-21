@@ -4,20 +4,17 @@ Local desktop GUI shell around the [Claude Code](https://code.claude.com/docs/en
 
 ## Prerequisites
 
-- Node.js 20+ (this repo sets `engines.node` to `>=20`; Node 18 will warn on install)
+- Node.js 22.12+ (Electron 44 / this repo’s `engines.node`; Node 18 will spam `EBADENGINE` and Vite will crash)
 - Claude Code CLI installed and logged in (`claude` on your PATH)
 
-If Electron fails to download (e.g. GitHub timeouts), set a mirror via env — do **not** put `electron_mirror` in `.npmrc` (npm warns: unknown project config):
+If Electron fails to download (GitHub timeouts / `Electron failed to install correctly`), the `postinstall` script retries via npmmirror. You can also force it:
 
 ```bash
 # macOS / Linux
 ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" npm install
 
-# Windows PowerShell
-$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"; npm install
-
-# Windows CMD
-set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && npm install
+# or only re-download the binary
+cd node_modules/electron && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" node install.js
 ```
 
 ## Develop
@@ -53,7 +50,7 @@ Full installers (DMG + zip on macOS):
 npm run dist
 ```
 
-Artifacts land in `release/` (e.g. `Claude Code Desktop-0.2.0-arm64.dmg`).
+Artifacts land in `release/` (e.g. `Claude Code Desktop-0.3.0-arm64.dmg`).
 
 After pulling new changes, a typical rebuild is:
 
