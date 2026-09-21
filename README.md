@@ -61,8 +61,10 @@ npm run dist
 
 Artifacts land in `release/`:
 
-- macOS: `Claude Code Desktop-0.3.0-arm64.dmg`, `…-mac.zip`
-- Windows: `Claude Code Desktop-0.3.0-x64.exe` (NSIS), `…-x64.zip`
+- macOS: `Claude Code Desktop-0.3.0-arm64.dmg`
+- Windows: `Claude Code Desktop-0.3.0-x64.exe` (NSIS)
+
+> Tip: the old “building block map” step hashed the whole zip for electron-updater. Local `dist` no longer builds mac zip/blockmaps, so packaging should not hang there.
 
 After pulling new changes, a typical rebuild is:
 

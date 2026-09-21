@@ -8,24 +8,25 @@ directories:
 # Prefer npmmirror when GitHub is unreachable (CN / flaky networks)
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
-# Local releases are unsigned
+# Local releases are unsigned; no electron-updater publish pipeline
 forceCodeSigning: false
+publish: null
 mac:
+  # DMG only — mac zip always builds a .blockmap (hashes ~100MB+) and looks "stuck"
   target:
     - dmg
-    - zip
   category: public.app-category.developer-tools
-  # Skip keychain identity discovery (can hang on macOS)
   identity: null
   hardenedRuntime: false
   gatekeeperAssess: false
+dmg:
+  # Skip differential-update blockmap after DMG (not needed without auto-update)
+  writeUpdateInfo: false
 win:
-  # Skip Authenticode / signtool (avoids Windows signing tooling downloads)
   signAndEditExecutable: false
   verifyUpdateCodeSignature: false
   target:
     - nsis
-    - zip
   artifactName: ${productName}-${version}-${arch}.${ext}
 nsis:
   oneClick: false
@@ -35,5 +36,4 @@ nsis:
 linux:
   target:
     - AppImage
-    - deb
   category: Development
